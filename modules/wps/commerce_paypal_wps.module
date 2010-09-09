@@ -1,0 +1,247 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Implements PayPal Website Payments Standard in Drupal Commerce checkout.
+ */
+
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_paypal_wps_menu() {
+  $items = array();
+
+  $items['paypal-test/wps/%commerce_order'] = array(
+    'title' => 'PayPal WPS test',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_paypal_wps_form', 2),
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_commerce_payment_method_info().
+ */
+function commerce_paypal_wps_commerce_payment_method_info() {
+  $payment_methods = array();
+
+  $payment_methods['paypal_wps'] = array(
+    'base' => 'commerce_paypal_wps',
+    'title' => t('PayPal WPS'),
+    'description' => t('PayPal Website Payments Standard'),
+    'offsite' => TRUE,
+  );
+
+  return $payment_methods;
+}
+
+/**
+ * Payment method callback: settings form.
+ */
+function commerce_paypal_wps_settings($settings = NULL) {
+  $form = array();
+
+  // Merge default settings into the stored settings array.
+  $default_currency = variable_get('commerce_default_currency', 'USD');
+
+  $settings = (array) $settings + array(
+    'business' => '',
+    'currency_code' => in_array($default_currency, array_keys(commerce_paypal_wps_currencies())) ? $default_currency : 'USD',
+    'language' => 'US',
+    'server' => 'sandbox',
+    'payment_action' => 'Sale',
+  );
+
+  $form['business'] = array(
+    '#type' => 'textfield',
+    '#title' => t('PayPal e-mail address'),
+    '#description' => t('The e-mail address you use for the PayPal account you want to receive payments.'),
+    '#default_value' => $settings['business'],
+    '#required' => TRUE,
+  );
+  $form['currency_code'] = array(
+    '#type' => 'select',
+    '#title' => t('Currency code'),
+    '#description' => t('Transactions can only be processed in one of the listed currencies.'),
+    '#options' => commerce_paypal_wps_currencies(),
+    '#default_value' => $settings['currency_code'],
+  );
+  $form['language'] = array(
+    '#type' => 'select',
+    '#title' => t('PayPal login page language'),
+    '#options' => commerce_paypal_wps_languages(),
+    '#default_value' => $settings['language'],
+  );
+  $form['server'] = array(
+    '#type' => 'radios',
+    '#title' => t('PayPal server'),
+    '#options' => array(
+      'sandbox' => ('Sandbox - use for testing, requires a PayPal Sandbox account'),
+      'live' => ('Live - use for processing real transactions'),
+    ),
+    '#default_value' => $settings['server'],
+  );
+  $form['payment_action'] = array(
+    '#type' => 'radios',
+    '#title' => t('Payment action'),
+    '#options' => array(
+      'sale' => t('Sale - authorize and capture the funds at the time the payment is processed'),
+      'authorization' => t('Authorization - reserve funds on the card to be captured later through your PayPal account'),
+    ),
+    '#default_value' => $settings['payment_action'],
+  );
+
+  return $form;
+}
+
+/**
+ * Payment method callback: redirect form, a wrapper around the module's general
+ *   use function for building a WPS form.
+ */
+function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment_method) {
+  $settings = array(
+    // Return to the previous page when payment is canceled
+    'cancel_return' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
+
+    // Return to the payment redirect page for processing successful payments
+    'return' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
+  );
+
+  return commerce_paypal_wps_order_form($form, $form_state, $order, $payment_method->settings + $settings);
+}
+
+/**
+ * Payment method callback: redirect form return validation.
+ */
+function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
+  // TODO: Actually do what we can based on the POST information to validate
+  // this was a successful payment (although actual transaction completion will
+  // depend on the IPN).
+
+  return TRUE;
+}
+
+/**
+ * Builds a Website Payments Standard form from an order object.
+ *
+ * @param $order
+ *   The fully loaded order being paid for.
+ * @param $settings
+ *   An array of settings used to build out the form, including:
+ *   - server => which server to use, either sandbox or live
+ *   - business => the PayPal e-mail address the payment submits to
+ *   - cancel_return => the URL PayPal should send the user to on cancellation
+ *   - return => the URL PayPal should send the user to on successful payment
+ *   - currency => the PayPal currency code to use for this payment if the total
+ *                 for the order is in a non-PayPal supported currency
+ *   - language => the PayPal language code to use on the payment form
+ *   - payment_action => the PayPal payment action to use: sale, authorization,
+ *                       or order
+ *
+ * @return
+ *   A renderable form array.
+ */
+function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) {
+  $total = commerce_line_items_total($order->line_items, 'product');
+
+  // Build the data array that will be translated into hidden form values.
+  $data = array(
+    // Specify the checkout experience to present to the user.
+    'cmd' => '_cart',
+
+    // Signify we're passing in a shopping cart from our system.
+    'upload' => 1,
+
+    // The store's PayPal e-mail address
+    'business' => $settings['business'],
+
+    // The path PayPal should send the IPN to
+    'notify_url' => url('paypal/ipn', array('absolute' => TRUE)),
+
+    // Set the correct character set
+    'charset' => 'utf-8',
+
+    // Do not display a comments prompt at PayPal
+    'no_note' => 1,
+
+    // Do not display a shipping address prompt at PayPal
+    'no_shipping' => 1,
+
+    // Return to the review page when payment is canceled
+    'cancel_return' => $settings['cancel_return'],
+
+    // Return to the payment redirect page for processing successful payments
+    'return' => $settings['return'],
+
+    // Return to this site with payment data in the POST
+    'rm' => 2,
+
+    // The type of payment action PayPal should take with this order
+    'paymentaction' => $settings['payment_action'],
+
+    // Set the currency and language codes
+    'currency_code' => in_array($total['currency_code'], array_keys(commerce_paypal_wps_currencies())) ? $total['currency_code'] : $settings['currency'],
+    'lc' => $settings['language'],
+
+    // Use the timestamp to generate a unique invoice number
+    'invoice' => $order->order_number . ' - ' . time(),
+
+    // Define a single item in the cart representing the whole order
+    'amount_1' => $total['price'],
+    'item_name_1' => t('Order @order_number at @store', array('@order_number' => $order->order_number, '@store' => variable_get('site_name', url('<front>', array('absolute' => TRUE))))),
+    'on0_1' => t('Product count'),
+    'os0_1' => commerce_line_items_quantity($order->line_items, 'product'),
+  );
+
+  $form['#action'] = commerce_paypal_wps_server_url($settings['server']);
+
+  foreach ($data as $name => $value) {
+    if (!empty($value)) {
+      $form[$name] = array('#type' => 'hidden', '#value' => $value);
+    }
+  }
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Proceed to PayPal'),
+  );
+
+  return $form;
+}
+
+/**
+ * Returns the URL to the specified PayPal WPS server.
+ *
+ * @param $server
+ *   Either sandbox or live indicating which server to get the URL for.
+ *
+ * @return
+ *   The URL to use to submit requests to the PayPal WPS server.
+ */
+function commerce_paypal_wps_server_url($server) {
+  switch ($server) {
+    case 'sandbox':
+      return 'https://www.sandbox.paypal.com/cgi-bin/webscr';
+    case 'live':
+      return 'https://www.paypal.com/cgi-bin/webscr';
+  }
+}
+
+/**
+ * Returns an array of all possible language codes.
+ */
+function commerce_paypal_wps_languages() {
+  return drupal_map_assoc(array('AU', 'DE', 'FR', 'IT', 'GB', 'ES', 'US'));
+}
+
+/**
+ * Returns an array of all possible currency codes.
+ */
+function commerce_paypal_wps_currencies() {
+  return drupal_map_assoc(array('AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TWD', 'USD'));
+}

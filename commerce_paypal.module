@@ -1,0 +1,23 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Implements PayPal payment services for use with Drupal Commerce.
+ */
+
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_paypal_menu() {
+  $items = array();
+
+  // Define an always accessible path to receive IPNs.
+  $items['paypal/ipn'] = array(
+    'page callback' => 'commerce_paypal_ipn',
+    'access callback' => TRUE,
+  );
+
+  return $items;
+}
