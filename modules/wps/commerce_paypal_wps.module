@@ -54,7 +54,7 @@ function commerce_paypal_wps_settings($settings = NULL) {
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_wps_currencies())) ? $default_currency : 'USD',
     'language' => 'US',
     'server' => 'sandbox',
-    'payment_action' => 'Sale',
+    'payment_action' => 'sale',
   );
 
   $form['business'] = array(
@@ -161,7 +161,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'business' => $settings['business'],
 
     // The path PayPal should send the IPN to
-    'notify_url' => url('paypal/ipn', array('absolute' => TRUE)),
+    'notify_url' => commerce_paypal_ipn_url(),
 
     // Set the correct character set
     'charset' => 'utf-8',

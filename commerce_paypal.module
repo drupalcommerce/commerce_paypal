@@ -14,10 +14,24 @@ function commerce_paypal_menu() {
   $items = array();
 
   // Define an always accessible path to receive IPNs.
-  $items['paypal/ipn'] = array(
+  $items['commerce_paypal/ipn'] = array(
     'page callback' => 'commerce_paypal_ipn',
     'access callback' => TRUE,
   );
 
   return $items;
+}
+
+/**
+ * Returns the IPN URL.
+ */
+function commerce_paypal_ipn_url() {
+  return url('commerce_paypal/ipn', array('absolute' => TRUE));
+}
+
+/**
+ * Processes an incoming IPN.
+ */
+function commerce_paypal_ipn() {
+  
 }
