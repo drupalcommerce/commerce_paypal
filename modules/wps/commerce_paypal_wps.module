@@ -110,6 +110,9 @@ function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment
 
     // Return to the payment redirect page for processing successful payments
     'return' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
+
+    // Specify the current payment method ID in the notify_url
+    'payment_method' => $payment_method->method_id,
   );
 
   return commerce_paypal_wps_order_form($form, $form_state, $order, $payment_method->settings + $settings);
@@ -142,12 +145,17 @@ function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
  *   - language => the PayPal language code to use on the payment form
  *   - payment_action => the PayPal payment action to use: sale, authorization,
  *                       or order
+ *   - payment_method => optionally the name of the Commerce payment method to
+ *                       include in the IPN notify_url
  *
  * @return
  *   A renderable form array.
  */
 function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) {
   $total = commerce_line_items_total($order->line_items, 'product');
+
+  // Ensure a default value for the payment_method setting.
+  $settings += array('payment_method' => '');
 
   // Build the data array that will be translated into hidden form values.
   $data = array(
@@ -161,7 +169,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'business' => $settings['business'],
 
     // The path PayPal should send the IPN to
-    'notify_url' => commerce_paypal_ipn_url(),
+    'notify_url' => commerce_paypal_ipn_url($settings['payment_method']),
 
     // Set the correct character set
     'charset' => 'utf-8',

@@ -17,6 +17,15 @@ function commerce_paypal_menu() {
   $items['commerce_paypal/ipn'] = array(
     'page callback' => 'commerce_paypal_ipn',
     'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  // Define an additional IPN path that is payment method specific.
+  $items['commerce_paypal/ipn/%commerce_payment_method'] = array(
+    'page callback' => 'commerce_paypal_ipn',
+    'page arguments' => array(2),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
   );
 
   return $items;
@@ -24,14 +33,33 @@ function commerce_paypal_menu() {
 
 /**
  * Returns the IPN URL.
+ *
+ * @param $method_id
+ *   Optionally specify a payment method ID to include in the URL.
  */
-function commerce_paypal_ipn_url() {
-  return url('commerce_paypal/ipn', array('absolute' => TRUE));
+function commerce_paypal_ipn_url($method_id = NULL) {
+  $parts = array(
+    'commerce_paypal',
+    'ipn',
+  );
+
+  if (!empty($method_id)) {
+    $parts += $method_id;
+  }
+
+  return url(implode('/', $parts), array('absolute' => TRUE));
 }
 
 /**
  * Processes an incoming IPN.
  */
-function commerce_paypal_ipn() {
-  
+function commerce_paypal_ipn($payment_method = NULL) {
+  // 1. Retrieve the IPN from $_POST.
+  // 2. POST the IPN back to PayPal for validation.
+  // 3. Validate the receiver's e-mail address is our own; this will depend on
+  //    settings managed by the appropriate payment method.
+  // 4. Verify the amount is the same as requested from PayPal originally.
+  // 5. Ensure the transaction ID has not already been processed for the current
+  //    payment status.
+  // 6. Update the local transaction based on the txn_type and payment status.
 }
