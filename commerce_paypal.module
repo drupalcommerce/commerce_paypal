@@ -94,7 +94,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
     }
 
     // If the IPN was invalid, log a message and exit.
-    if ($reponse->data == 'INVALID') {
+    if ($response->data == 'INVALID') {
       watchdog('commerce_paypal', 'Invalid IPN received and ignored.', array(), WATCHDOG_ALERT);
     }
   }
