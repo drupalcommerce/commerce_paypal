@@ -45,7 +45,7 @@ function commerce_paypal_ipn_url($method_id = NULL) {
   );
 
   if (!empty($method_id)) {
-    $parts += $method_id;
+    $parts[] = $method_id;
   }
 
   return url(implode('/', $parts), array('absolute' => TRUE));
@@ -88,7 +88,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
     $response = drupal_http_request($host, array(), 'POST', implode('&', $variables));
 
     // If an error occurred during processing, log the message and exit.
-    if (property_exists('error', $response)) {
+    if (property_exists($response, 'error')) {
       watchdog('commerce_paypal', 'Attempt to validate IPN failed with error @code: @error', array('@code' => $response->code, '@error' => $response->error), WATCHDOG_ERROR);
       return FALSE;
     }
