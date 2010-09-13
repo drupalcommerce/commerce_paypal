@@ -15,14 +15,15 @@ function commerce_paypal_menu() {
 
   // Define an always accessible path to receive IPNs.
   $items['commerce_paypal/ipn'] = array(
-    'page callback' => 'commerce_paypal_ipn',
+    'page callback' => 'commerce_paypal_process_ipn',
+    'page arguments' => array(),
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
   );
 
   // Define an additional IPN path that is payment method specific.
   $items['commerce_paypal/ipn/%commerce_payment_method'] = array(
-    'page callback' => 'commerce_paypal_ipn',
+    'page callback' => 'commerce_paypal_process_ipn',
     'page arguments' => array(2),
     'access callback' => TRUE,
     'type' => MENU_CALLBACK,
@@ -52,14 +53,109 @@ function commerce_paypal_ipn_url($method_id = NULL) {
 
 /**
  * Processes an incoming IPN.
+ *
+ * @param $payment_method
+ *   The payment method object for the method that originally made the payment.
+ * @param $debug_ipn
+ *   Optionally specify an IPN array for debug purposes; if left empty, the IPN
+ *     be pulled from the $_POST. If an IPN is passed in, validation of the IPN
+ *     at PayPal will be bypassed.
+ *
+ * @return
+ *   TRUE or FALSE indicating whether the IPN was successfully processed or not.
  */
-function commerce_paypal_ipn($payment_method = NULL) {
-  // 1. Retrieve the IPN from $_POST.
-  // 2. POST the IPN back to PayPal for validation.
-  // 3. Validate the receiver's e-mail address is our own; this will depend on
-  //    settings managed by the appropriate payment method.
-  // 4. Verify the amount is the same as requested from PayPal originally.
-  // 5. Ensure the transaction ID has not already been processed for the current
-  //    payment status.
-  // 6. Update the local transaction based on the txn_type and payment status.
+function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array()) {
+  // Retrieve the IPN from $_POST if the caller did not supply an IPN array.
+  if (empty($debug_ipn)) {
+    $ipn = $_POST;
+
+    // Prepare an array to POST back to PayPal to validate the IPN.
+    $variables = array('cmd=_notify-validate');
+
+    foreach ($ipn as $key => $value) {
+      $variables[] = $key . '=' . urlencode(stripslashes($value));
+    }
+
+    // Determine the proper PayPal server to POST to.
+    if ($ipn['test_ipn'] == 1) {
+      $host = 'https://www.sandbox.paypal.com/cgi-bin/webscr';
+    }
+    else {
+      $host = 'https://www.paypal.com/cgi-bin/webscr';
+    }
+
+    // Process the HTTP request to validate the IPN.
+    $response = drupal_http_request($host, array(), 'POST', implode('&', $variables));
+
+    // If an error occurred during processing, log the message and exit.
+    if (property_exists('error', $response)) {
+      watchdog('commerce_paypal', 'Attempt to validate IPN failed with error @code: @error', array('@code' => $response->code, '@error' => $response->error), WATCHDOG_ERROR);
+      return FALSE;
+    }
+
+    // If the IPN was invalid, log a message and exit.
+    if ($reponse->data == 'INVALID') {
+      watchdog('commerce_paypal', 'Invalid IPN received and ignored.', array(), WATCHDOG_ALERT);
+    }
+  }
+  else {
+    $ipn = $debug_ipn;
+  }
+
+  // Give the payment method module an opportunity to validate the receiver
+  // e-mail address and amount of the payment if possible. If a validate
+  // function exists, it is responsible for setting its own watchdog message.
+  if (!empty($payment_method)) {
+    $callback = $payment_method->base . '_paypal_ipn_validate';
+
+    // If a validator function existed...
+    if (function_exists($callback)) {
+      // Only exit if the function explicitly returns FALSE.
+      if ($callback($ipn) === FALSE) {
+        return FALSE;
+      }
+    }
+  }
+
+  // Exit if the IPN has already been processed.
+  if (commerce_paypal_ipn_load($ipn['txn_id'])) {
+    // TODO: actually store and retrieve IPN data and decide if this should fail
+    // silently or leave an error message.
+    return FALSE;
+  }
+
+  // TODO: Create or update the relevant local transaction based on the txn_type
+  // and payment status.
+}
+
+/**
+ * Loads a stored IPN by transaction ID.
+ *
+ * @param $txn_id
+ *   The transaction ID of the IPN to load.
+ *
+ * @return
+ *   The original IPN with some meta data related to local processing.
+ */
+function commerce_paypal_ipn_load($txn_id) {
+  return FALSE;
+}
+
+/**
+ * Saves an IPN with some meta data related to local processing.
+ *
+ * @param $ipn
+ */
+function commerce_paypal_ipn_save($ipn) {
+
+}
+
+/**
+ * Deletes a stored IPN by transaction ID.
+ *
+ * @param $txn_id
+ *   The transaction ID of the IPN to delete.
+ */
+function commerce_paypal_ipn_delete($txn_id) {
+
 }
