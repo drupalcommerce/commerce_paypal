@@ -111,8 +111,8 @@ function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment
     // Return to the payment redirect page for processing successful payments
     'return' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
 
-    // Specify the current payment method ID in the notify_url
-    'payment_method' => $payment_method->method_id,
+    // Specify the current payment method instance ID in the notify_url
+    'payment_method' => $payment_method->instance_id,
   );
 
   return commerce_paypal_wps_order_form($form, $form_state, $order, $payment_method->settings + $settings);
