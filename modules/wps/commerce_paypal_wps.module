@@ -33,7 +33,9 @@ function commerce_paypal_wps_commerce_payment_method_info() {
   $payment_methods['paypal_wps'] = array(
     'base' => 'commerce_paypal_wps',
     'title' => t('PayPal WPS'),
+    'short_title' => t('PayPal'),
     'description' => t('PayPal Website Payments Standard'),
+    'terminal' => FALSE,
     'offsite' => TRUE,
   );
 
