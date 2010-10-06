@@ -45,7 +45,7 @@ function commerce_paypal_wps_commerce_payment_method_info() {
 /**
  * Payment method callback: settings form.
  */
-function commerce_paypal_wps_settings($settings = NULL) {
+function commerce_paypal_wps_settings_form($settings = NULL) {
   $form = array();
 
   // Merge default settings into the stored settings array.
