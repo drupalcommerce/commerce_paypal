@@ -106,6 +106,12 @@ function commerce_paypal_wps_settings_form($settings = NULL) {
  *   use function for building a WPS form.
  */
 function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment_method) {
+  // Return an error if the enabling action's settings haven't been configured.
+  if (empty($payment_method->settings['business'])) {
+    drupal_set_message(t('PayPal WPS is not configured for use. No PayPal e-mail address has been specified.'), 'error');
+    return array();
+  }
+
   $settings = array(
     // Return to the previous page when payment is canceled
     'cancel_return' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
