@@ -1,7 +1,7 @@
 ; $Id$
 name = PayPal WPS
 description = Implements PayPal Website Payments Standard in Drupal Commerce checkout.
-package = Drupal Commerce - Payment
+package = Commerce (PayPal)
 dependencies[] = commerce
 dependencies[] = commerce_ui
 dependencies[] = commerce_payment
