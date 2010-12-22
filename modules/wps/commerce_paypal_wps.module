@@ -208,7 +208,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'invoice' => $order->order_number . ' - ' . time(),
 
     // Define a single item in the cart representing the whole order
-    'amount_1' => $total['price'],
+    'amount_1' => $total['amount'],
     'item_name_1' => t('Order @order_number at @store', array('@order_number' => $order->order_number, '@store' => variable_get('site_name', url('<front>', array('absolute' => TRUE))))),
     'on0_1' => t('Product count'),
     'os0_1' => commerce_line_items_quantity($order->line_items, 'product'),
