@@ -107,7 +107,7 @@ function commerce_paypal_wps_settings_form($settings = NULL) {
  */
 function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment_method) {
   // Return an error if the enabling action's settings haven't been configured.
-  if (empty($payment_method->settings['business'])) {
+  if (empty($payment_method['settings']['business'])) {
     drupal_set_message(t('PayPal WPS is not configured for use. No PayPal e-mail address has been specified.'), 'error');
     return array();
   }
@@ -120,10 +120,10 @@ function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment
     'return' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
 
     // Specify the current payment method instance ID in the notify_url
-    'payment_method' => $payment_method->instance_id,
+    'payment_method' => $payment_method['instance_id'],
   );
 
-  return commerce_paypal_wps_order_form($form, $form_state, $order, $payment_method->settings + $settings);
+  return commerce_paypal_wps_order_form($form, $form_state, $order, $payment_method['settings'] + $settings);
 }
 
 /**

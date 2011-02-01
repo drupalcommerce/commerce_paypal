@@ -55,7 +55,7 @@ function commerce_paypal_ipn_url($method_id = NULL) {
  * Processes an incoming IPN.
  *
  * @param $payment_method
- *   The payment method object for the method that originally made the payment.
+ *   The payment method array for the method that originally made the payment.
  * @param $debug_ipn
  *   Optionally specify an IPN array for debug purposes; if left empty, the IPN
  *     be pulled from the $_POST. If an IPN is passed in, validation of the IPN
@@ -106,7 +106,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
   // e-mail address and amount of the payment if possible. If a validate
   // function exists, it is responsible for setting its own watchdog message.
   if (!empty($payment_method)) {
-    $callback = $payment_method->base . '_paypal_ipn_validate';
+    $callback = $payment_method['base'] . '_paypal_ipn_validate';
 
     // If a validator function existed...
     if (function_exists($callback)) {
