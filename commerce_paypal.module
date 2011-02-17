@@ -21,8 +21,8 @@ function commerce_paypal_menu() {
     'type' => MENU_CALLBACK,
   );
 
-  // Define an additional IPN path that is payment method specific.
-  $items['commerce_paypal/ipn/%commerce_payment_method'] = array(
+  // Define an additional IPN path that is payment method / instance specific.
+  $items['commerce_paypal/ipn/%commerce_payment_method_instance'] = array(
     'page callback' => 'commerce_paypal_process_ipn',
     'page arguments' => array(2),
     'access callback' => TRUE,
@@ -55,7 +55,7 @@ function commerce_paypal_ipn_url($method_id = NULL) {
  * Processes an incoming IPN.
  *
  * @param $payment_method
- *   The payment method array for the method that originally made the payment.
+ *   The payment method instance array that originally made the payment.
  * @param $debug_ipn
  *   Optionally specify an IPN array for debug purposes; if left empty, the IPN
  *     be pulled from the $_POST. If an IPN is passed in, validation of the IPN
@@ -111,7 +111,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
     // If a validator function existed...
     if (function_exists($callback)) {
       // Only exit if the function explicitly returns FALSE.
-      if ($callback($ipn) === FALSE) {
+      if ($callback($payment_method, $ipn) === FALSE) {
         return FALSE;
       }
     }
