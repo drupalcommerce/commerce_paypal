@@ -144,23 +144,25 @@ function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
  *   The fully loaded order being paid for.
  * @param $settings
  *   An array of settings used to build out the form, including:
- *   - server => which server to use, either sandbox or live
- *   - business => the PayPal e-mail address the payment submits to
- *   - cancel_return => the URL PayPal should send the user to on cancellation
- *   - return => the URL PayPal should send the user to on successful payment
- *   - currency => the PayPal currency code to use for this payment if the total
- *                 for the order is in a non-PayPal supported currency
- *   - language => the PayPal language code to use on the payment form
- *   - payment_action => the PayPal payment action to use: sale, authorization,
- *                       or order
- *   - payment_method => optionally the name of the Commerce payment method to
- *                       include in the IPN notify_url
+ *   - server: which server to use, either sandbox or live
+ *   - business: the PayPal e-mail address the payment submits to
+ *   - cancel_return: the URL PayPal should send the user to on cancellation
+ *   - return: the URL PayPal should send the user to on successful payment
+ *   - currency_code: the PayPal currency code to use for this payment if the
+ *     total for the order is in a non-PayPal supported currency
+ *   - language: the PayPal language code to use on the payment form
+ *   - payment_action: the PayPal payment action to use: sale, authorization,
+ *     or order
+ *   - payment_method: optionally the name of the Commerce payment method to
+ *     include in the IPN notify_url
  *
  * @return
  *   A renderable form array.
  */
 function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) {
-  $total = commerce_line_items_total($order->line_items, 'product');
+  $wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+  $total = commerce_line_items_total($wrapper->commerce_line_items, 'product');
 
   // Ensure a default value for the payment_method setting.
   $settings += array('payment_method' => '');
@@ -201,7 +203,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'paymentaction' => $settings['payment_action'],
 
     // Set the currency and language codes
-    'currency_code' => in_array($total['currency_code'], array_keys(commerce_paypal_wps_currencies())) ? $total['currency_code'] : $settings['currency'],
+    'currency_code' => in_array($total['currency_code'], array_keys(commerce_paypal_wps_currencies())) ? $total['currency_code'] : $settings['currency_code'],
     'lc' => $settings['language'],
 
     // Use the timestamp to generate a unique invoice number
@@ -211,7 +213,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'amount_1' => $total['amount'],
     'item_name_1' => t('Order @order_number at @store', array('@order_number' => $order->order_number, '@store' => variable_get('site_name', url('<front>', array('absolute' => TRUE))))),
     'on0_1' => t('Product count'),
-    'os0_1' => commerce_line_items_quantity($order->line_items, 'product'),
+    'os0_1' => commerce_line_items_quantity($wrapper->commerce_line_items, 'product'),
   );
 
   $form['#action'] = commerce_paypal_wps_server_url($settings['server']);
