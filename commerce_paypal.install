@@ -134,7 +134,7 @@ function commerce_paypal_schema() {
       ),
     ),
     'indexes' => array(
-      'ipn_txn_id' => array('ipn_txn_id'),
+      'txn_id' => array('txn_id'),
     ),
   );
 
