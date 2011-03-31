@@ -7,23 +7,6 @@
 
 
 /**
- * Implements hook_menu().
- */
-function commerce_paypal_wps_menu() {
-  $items = array();
-
-  $items['paypal-test/wps/%commerce_order'] = array(
-    'title' => 'PayPal WPS test',
-    'page callback' => 'drupal_get_form',
-    'page arguments' => array('commerce_paypal_wps_form', 2),
-    'access arguments' => array('access content'),
-    'type' => MENU_CALLBACK,
-  );
-
-  return $items;
-}
-
-/**
  * Implements hook_commerce_payment_method_info().
  */
 function commerce_paypal_wps_commerce_payment_method_info() {
@@ -137,6 +120,64 @@ function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
 }
 
 /**
+ * Payment method callback: validate an IPN based on receiver e-mail address,
+ *   price, and other parameters as possible.
+ */
+function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) {
+  // Return FALSE if the receiver e-mail does not match the one specified by
+  // the payment method instance.
+  if ($ipn['receiver_email'] != $payment_method['settings']['business']) {
+    watchdog('commerce_paypal_wps', 'IPN rejected: invalid receiver e-mail specified (@receiver_email).', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
+    return FALSE;
+  }
+}
+
+/**
+ * Payment method callback: process an IPN once it's been validated.
+ */
+function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) {
+  // Exit when we don't get a payment status we recognize.
+  if (!in_array($ipn['payment_status'], array('Failed', 'Pending', 'Completed'))) {
+    return FALSE;
+  }
+
+  // Create a new payment transaction for the order.
+  $transaction = commerce_payment_transaction_new('paypal_wps', $order->order_id);
+  $transaction->instance_id = $payment_method['instance_id'];
+  $transaction->remote_id = $ipn['txn_id'];
+  $transaction->amount = $ipn['mc_gross'];
+  $transaction->currency_code = $ipn['mc_currency'];
+  $transaction->payload[REQUEST_TIME] = $ipn;
+
+  // Set the transaction's statuses based on the IPN's payment_status.
+  $transaction->remote_status = $ipn['payment_status'];
+
+  // If we didn't get an approval response code...
+  switch ($ipn['payment_status']) {
+    case 'Failed':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+      $transaction->message = t("The payment has failed. This happens only if the payment was made from your customer’s bank account.");
+      break;
+
+    case 'Pending':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+      $transaction->message = commerce_paypal_ipn_pending_reason($ipn['pending_reason']);
+      break;
+
+    case 'Completed':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->message = t('The payment has completed.');
+      break;
+  }
+
+  // Save the transaction information.
+  commerce_payment_transaction_save($transaction);
+  $ipn['transaction_id'] = $transaction->transaction_id;
+
+  watchdog('commerce_paypal_wps', 'IPN processed for Order @order_number with ID @txn_id.', array('@txn_id' => $ipn['txn_id'], '@order_number' => $order->order_number), WATCHDOG_INFO);
+}
+
+/**
  * Builds a Website Payments Standard form from an order object.
  *
  * @param $order
@@ -206,7 +247,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'lc' => $settings['language'],
 
     // Use the timestamp to generate a unique invoice number
-    'invoice' => $order->order_number . ' - ' . time(),
+    'invoice' => commerce_paypal_ipn_invoice($order),
 
     // Define a single item in the cart representing the whole order
     'amount_1' => $total['amount'],
