@@ -147,7 +147,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
     // If a processing function existed...
     if (function_exists($callback)) {
       // Only exit if the function explicitly returns FALSE.
-      if ($callback($order, $payment_method, $ipn)) {
+      if ($callback($order, $payment_method, $ipn) === FALSE) {
         return FALSE;
       }
 
@@ -190,7 +190,7 @@ function commerce_paypal_ipn_load($id, $type = 'txn_id') {
  *     used locally.
  */
 function commerce_paypal_ipn_save(&$ipn) {
-  if (commerce_paypal_ipn_load($ipn['txn_id'])) {
+  if (!empty($ipn['ipn_id']) && commerce_paypal_ipn_load($ipn['txn_id'])) {
     $ipn['changed'] = REQUEST_TIME;
 
     return drupal_write_record('commerce_paypal_ipn', $ipn, 'ipn_id');
