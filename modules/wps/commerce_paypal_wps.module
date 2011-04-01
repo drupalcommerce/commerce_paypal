@@ -159,7 +159,8 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
 
   // If this is a prior authorization capture IPN for which we've already
   // created a transaction...
-  if (!empty($ipn['auth_id'])) {
+  if (!empty($ipn['auth_id']) && $ipn['auth_id'] != $ipn['txn_id'] &&
+    $auth_ipn = commerce_paypal_ipn_load($ipn['auth_id'])) {
     // Load the prior IPN's transaction and update that with the capture values.
     $transaction = commerce_payment_transaction_load($auth_ipn['transaction_id']);
   }
