@@ -153,13 +153,14 @@ function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) 
  */
 function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) {
   // Exit when we don't get a payment status we recognize.
-  if (!in_array($ipn['payment_status'], array('Failed', 'Voided', 'Pending', 'Completed'))) {
+  if (!in_array($ipn['payment_status'], array('Failed', 'Voided', 'Pending', 'Completed', 'Refunded'))) {
     return FALSE;
   }
 
   // If this is a prior authorization capture IPN for which we've already
   // created a transaction...
-  if (!empty($ipn['auth_id']) && $auth_ipn = commerce_paypal_ipn_load($ipn['auth_id'])) {
+  if (in_array($ipn['payment_status'], array('Voided', 'Completed')) &&
+    !empty($ipn['auth_id']) && $auth_ipn = commerce_paypal_ipn_load($ipn['auth_id'])) {
     // Load the prior IPN's transaction and update that with the capture values.
     $transaction = commerce_payment_transaction_load($auth_ipn['transaction_id']);
   }
@@ -197,6 +198,11 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
     case 'Completed':
       $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
       $transaction->message = t('The payment has completed.');
+      break;
+
+    case 'Refunded':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->message = t('Refund for transaction @txn_id', array('@txn_id' => $ipn['parent_txn_id']));
       break;
   }
 
