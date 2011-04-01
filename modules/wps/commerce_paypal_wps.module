@@ -79,6 +79,15 @@ function commerce_paypal_wps_settings_form($settings = NULL) {
     ),
     '#default_value' => $settings['payment_action'],
   );
+  $form['ipn_logging'] = array(
+    '#type' => 'radios',
+    '#title' => t('IPN logging'),
+    '#options' => array(
+      'notification' => t('Log notifications during IPN validation and processing.'),
+      'full_ipn' => t('Log notifications with the full IPN during validation and processing (used for debugging).'),
+    ),
+    '#default_value' => 'notification',
+  );
 
   return $form;
 }
@@ -115,7 +124,7 @@ function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
   // TODO: Actually do what we can based on the POST information to validate
   // this was a successful payment (although actual transaction completion will
   // depend on the IPN).
-
+  watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>', array(), WATCHDOG_NOTICE);
   return TRUE;
 }
 
@@ -127,9 +136,11 @@ function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) 
   // Return FALSE if the receiver e-mail does not match the one specified by
   // the payment method instance.
   if ($ipn['receiver_email'] != $payment_method['settings']['business']) {
-    watchdog('commerce_paypal_wps', 'IPN rejected: invalid receiver e-mail specified (@receiver_email).', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_wps', 'IPN rejected: invalid receiver e-mail specified (@receiver_email).' . $ipn_log, array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
     return FALSE;
   }
+
+  watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number with ID @txn_id.' . $ipn_log, array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id']), WATCHDOG_NOTICE);
 }
 
 /**
@@ -174,7 +185,7 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
   commerce_payment_transaction_save($transaction);
   $ipn['transaction_id'] = $transaction->transaction_id;
 
-  watchdog('commerce_paypal_wps', 'IPN processed for Order @order_number with ID @txn_id.', array('@txn_id' => $ipn['txn_id'], '@order_number' => $order->order_number), WATCHDOG_INFO);
+  watchdog('commerce_paypal_wps', 'IPN processed for Order @order_number with ID @txn_id.' . $ipn_log, array('@txn_id' => $ipn['txn_id'], '@order_number' => $order->order_number), WATCHDOG_INFO);
 }
 
 /**
@@ -202,7 +213,8 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
 function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) {
   $wrapper = entity_metadata_wrapper('commerce_order', $order);
 
-  $total = commerce_line_items_total($wrapper->commerce_line_items, 'product');
+  $currency_code = $wrapper->commerce_order_total->currency_code->value();
+  $amount = $wrapper->commerce_order_total->amount->value();
 
   // Ensure a default value for the payment_method setting.
   $settings += array('payment_method' => '');
@@ -243,14 +255,14 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'paymentaction' => $settings['payment_action'],
 
     // Set the currency and language codes
-    'currency_code' => in_array($total['currency_code'], array_keys(commerce_paypal_wps_currencies())) ? $total['currency_code'] : $settings['currency_code'],
+    'currency_code' => in_array($currency_code, array_keys(commerce_paypal_wps_currencies())) ? $currency_code : $settings['currency_code'],
     'lc' => $settings['language'],
 
     // Use the timestamp to generate a unique invoice number
     'invoice' => commerce_paypal_ipn_invoice($order),
 
     // Define a single item in the cart representing the whole order
-    'amount_1' => $total['amount'],
+    'amount_1' => $amount,
     'item_name_1' => t('Order @order_number at @store', array('@order_number' => $order->order_number, '@store' => variable_get('site_name', url('<front>', array('absolute' => TRUE))))),
     'on0_1' => t('Product count'),
     'os0_1' => commerce_line_items_quantity($wrapper->commerce_line_items, 'product'),
