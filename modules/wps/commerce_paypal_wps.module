@@ -153,7 +153,7 @@ function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) 
  */
 function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) {
   // Exit when we don't get a payment status we recognize.
-  if (!in_array($ipn['payment_status'], array('Failed', 'Pending', 'Completed'))) {
+  if (!in_array($ipn['payment_status'], array('Failed', 'Voided', 'Pending', 'Completed'))) {
     return FALSE;
   }
 
