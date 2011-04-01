@@ -86,7 +86,7 @@ function commerce_paypal_wps_settings_form($settings = NULL) {
       'notification' => t('Log notifications during IPN validation and processing.'),
       'full_ipn' => t('Log notifications with the full IPN during validation and processing (used for debugging).'),
     ),
-    '#default_value' => 'notification',
+    '#default_value' => $settings['ipn_logging'],
   );
 
   return $form;
@@ -121,11 +121,16 @@ function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment
  * Payment method callback: redirect form return validation.
  */
 function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
-  // TODO: Actually do what we can based on the POST information to validate
-  // this was a successful payment (although actual transaction completion will
-  // depend on the IPN).
-  watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>', array(), WATCHDOG_NOTICE);
-  return TRUE;
+  if (!empty($payment_method['settings']['ipn_logging']) &&
+    $payment_method['settings']['ipn_logging'] == 'full_ipn') {
+    watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>', array(), WATCHDOG_NOTICE);
+  }
+
+  // This may be an unnecessary step, but if for some reason the user does end
+  // up returning at the success URL with a Failed payment, go back.
+  if (!empty($_POST['payment_status']) && $_POST['payment_status'] == 'Failed') {
+    return FALSE;
+  }
 }
 
 /**
