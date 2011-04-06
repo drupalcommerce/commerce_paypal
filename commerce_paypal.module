@@ -108,7 +108,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
   }
 
   // Exit if the IPN has already been processed.
-  if ($prior_ipn = commerce_paypal_ipn_load($ipn['txn_id'])) {
+  if (!empty($ipn['txn_id']) && $prior_ipn = commerce_paypal_ipn_load($ipn['txn_id'])) {
     if ($prior_ipn['payment_status'] == $ipn['payment_status']) {
       watchdog('commerce_paypal', 'Attempted to process an IPN that has already been processed with transaction ID @txn_id.', array('@txn_id' => $ipn['txn_id']), WATCHDOG_NOTICE);
       return FALSE;
