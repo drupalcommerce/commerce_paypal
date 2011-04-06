@@ -19,7 +19,11 @@
  * When a module implements this hook, it is important to take the values of the
  * arguments into consideration before acting. For example, it is possible that
  * the Order and/or the Transaction parameters are FALSE, meaning the IPN was
- * sent for a transaction that Commerce knows nothing about.
+ * sent for a transaction that Commerce knows nothing about. It is also possible
+ * for an IPN to not have a txn_id, such as with subscription notifications. In
+ * these cases, you should use additional parameters in the IPN to ensure before
+ * taking any action that an action is called for and has not already been done,
+ * such as the subscr_id for subscription notifications.
  *
  * Additionally, the IPN array may not have the ipn_id set, meaning that the IPN
  * passed validation but could not be processed by the payment method module. In
