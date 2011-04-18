@@ -76,7 +76,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
     }
 
     // Determine the proper PayPal server to POST to.
-    if ($ipn['test_ipn'] == 1) {
+    if (!empty($ipn['test_ipn']) && $ipn['test_ipn'] == 1) {
       $host = 'https://www.sandbox.paypal.com/cgi-bin/webscr';
     }
     else {
