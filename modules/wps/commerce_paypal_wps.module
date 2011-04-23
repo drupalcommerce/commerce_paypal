@@ -39,6 +39,7 @@ function commerce_paypal_wps_settings_form($settings = NULL) {
     'language' => 'US',
     'server' => 'sandbox',
     'payment_action' => 'sale',
+    'ipn_logging' => 'notification',
   );
 
   $form['business'] = array(
@@ -171,7 +172,7 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
   }
 
   $transaction->remote_id = $ipn['txn_id'];
-  $transaction->amount = $ipn['mc_gross'];
+  $transaction->amount = commerce_currency_decimal_to_amount($ipn['mc_gross'], $ipn['mc_currency']);
   $transaction->currency_code = $ipn['mc_currency'];
   $transaction->payload[REQUEST_TIME] = $ipn;
 
@@ -287,7 +288,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'invoice' => commerce_paypal_ipn_invoice($order),
 
     // Define a single item in the cart representing the whole order
-    'amount_1' => commerce_currency_integer_to_amount($amount, $currency_code),
+    'amount_1' => commerce_currency_amount_to_decimal($amount, $currency_code),
     'item_name_1' => t('Order @order_number at @store', array('@order_number' => $order->order_number, '@store' => variable_get('site_name', url('<front>', array('absolute' => TRUE))))),
     'on0_1' => t('Product count'),
     'os0_1' => commerce_line_items_quantity($wrapper->commerce_line_items, 'product'),
