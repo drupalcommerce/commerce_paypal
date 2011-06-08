@@ -19,6 +19,7 @@ function commerce_paypal_wps_commerce_payment_method_info() {
     'description' => t('PayPal Website Payments Standard'),
     'terminal' => FALSE,
     'offsite' => TRUE,
+    'offsite_autoredirect' => TRUE,
   );
 
   return $payment_methods;
