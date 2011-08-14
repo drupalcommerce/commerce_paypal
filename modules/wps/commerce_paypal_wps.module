@@ -292,7 +292,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'amount_1' => round(commerce_currency_amount_to_decimal($amount, $currency_code), 2),
     'item_name_1' => t('Order @order_number at @store', array('@order_number' => $order->order_number, '@store' => variable_get('site_name', url('<front>', array('absolute' => TRUE))))),
     'on0_1' => t('Product count'),
-    'os0_1' => commerce_line_items_quantity($wrapper->commerce_line_items, 'product'),
+    'os0_1' => commerce_line_items_quantity($wrapper->commerce_line_items, commerce_product_line_item_types()),
   );
 
   $form['#action'] = commerce_paypal_wps_server_url($settings['server']);
