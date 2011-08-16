@@ -260,3 +260,97 @@ function commerce_paypal_ipn_pending_reason($pending_reason) {
       return t('The payment is pending for a reason other than those listed above. For more information, contact PayPal Customer Service.');
   }
 }
+
+/**
+ * Returns an appropriate message given an AVS code.
+ */
+function commerce_paypal_avs_code_message($code) {
+  if (is_numeric($code)) {
+    switch ($code) {
+      case '0':
+        return t('All the address information matched.');
+      case '1':
+        return t('None of the address information matched; transaction declined.');
+      case '2':
+        return t('Part of the address information matched.');
+      case '3':
+        return t('The merchant did not provide AVS information. Not processed.');
+      case '4':
+        return t('Address not checked, or acquirer had no response. Service not available.');
+      case 'Null':
+      default:
+        return t('No AVS response was obtained.');
+    }
+  }
+
+  switch ($code) {
+    case 'A':
+    case 'B':
+      return t('Address matched; postal code did not');
+    case 'C':
+    case 'N':
+      return t('Nothing matched; transaction declined');
+    case 'D':
+    case 'F':
+    case 'X':
+    case 'Y':
+      return t('Address and postal code matched');
+    case 'E':
+      return t('Not allowed for MOTO transactions; transaction declined');
+    case 'G':
+      return t('Global unavailable');
+    case 'I':
+      return t('International unavailable');
+    case 'P':
+    case 'W':
+    case 'Z':
+      return t('Postal code matched; address did not');
+    case 'R':
+      return t('Retry for validation');
+    case 'S':
+      return t('Service not supported');
+    case 'U':
+      return t('Unavailable');
+    default:
+      return t('An unknown error occurred.');
+  }
+}
+
+/**
+ * Returns an appropriate message given a CVV2 match code.
+ */
+function commerce_paypal_cvv_match_message($code) {
+  if (is_numeric($code)) {
+    switch ($code) {
+      case '0':
+        return t('Matched');
+      case '1':
+        return t('No match');
+      case '2':
+        return t('The merchant has not implemented CVV2 code handling.');
+      case '3':
+        return t('Merchant has indicated that CVV2 is not present on card.');
+      case '4':
+        return t('Service not available');
+      default:
+        return t('Unkown error');
+    }
+  }
+
+  switch ($code) {
+    case 'M':
+      return t('Match');
+    case 'N':
+      return t('No match');
+    case 'P':
+      return t('Not processed');
+    case 'S':
+      return t('Service not supported');
+    case 'U':
+      return t('Service not available');
+    case 'X':
+      return t('No response');
+    default:
+      return t('Not checked');
+  }
+}

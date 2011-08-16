@@ -8,8 +8,5 @@ dependencies[] = commerce_order
 dependencies[] = commerce_paypal
 core = 7.x
 
-; Base module files
-files[] = commerce_paypal_wps.module
-
 ; Simple tests
 ; files[] = tests/commerce_paypal_wps.test
