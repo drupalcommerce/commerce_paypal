@@ -416,7 +416,7 @@ function commerce_paypal_wpp_server_url($server) {
     case 'sandbox':
       return 'https://api-3t.sandbox.paypal.com/nvp';
     case 'live':
-      return 'https:///api-3t.paypal.com/nvp';
+      return 'https://api-3t.paypal.com/nvp';
   }
 }
 
