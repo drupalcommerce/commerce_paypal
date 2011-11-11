@@ -162,6 +162,7 @@ function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) 
   // Return FALSE if the receiver e-mail does not match the one specified by
   // the payment method instance.
   if ($ipn['receiver_email'] != $payment_method['settings']['business']) {
+    commerce_payment_redirect_pane_previous_page($order);
     watchdog('commerce_paypal_wps', 'IPN rejected: invalid receiver e-mail specified (@receiver_email).', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
     return FALSE;
   }
@@ -175,6 +176,7 @@ function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) 
 function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) {
   // Exit when we don't get a payment status we recognize.
   if (!in_array($ipn['payment_status'], array('Failed', 'Voided', 'Pending', 'Completed', 'Refunded'))) {
+    commerce_payment_redirect_pane_previous_page($order);
     return FALSE;
   }
 
@@ -231,6 +233,7 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
   commerce_payment_transaction_save($transaction);
   $ipn['transaction_id'] = $transaction->transaction_id;
 
+  commerce_payment_redirect_pane_next_page($order);
   watchdog('commerce_paypal_wps', 'IPN processed for Order @order_number with ID @txn_id.', array('@txn_id' => $ipn['txn_id'], '@order_number' => $order->order_number), WATCHDOG_INFO);
 }
 
