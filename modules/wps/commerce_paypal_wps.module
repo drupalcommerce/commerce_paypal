@@ -12,10 +12,15 @@
 function commerce_paypal_wps_commerce_payment_method_info() {
   $payment_methods = array();
 
+  $icons = commerce_paypal_icons();
+  $display_title = t('!logo PayPal - pay securely without sharing your financial information', array('!logo' => $icons['paypal']));
+  $display_title .= '<div class="commerce-paypal-icons"><span class="label">' . t('Includes:') . '</span>' . implode(' ', $icons) . '</div>';
+
   $payment_methods['paypal_wps'] = array(
     'base' => 'commerce_paypal_wps',
     'title' => t('PayPal WPS'),
     'short_title' => t('PayPal'),
+    'display_title' => $display_title,
     'description' => t('PayPal Website Payments Standard'),
     'terminal' => FALSE,
     'offsite' => TRUE,
@@ -89,6 +94,20 @@ function commerce_paypal_wps_settings_form($settings = NULL) {
       'full_ipn' => t('Log notifications with the full IPN during validation and processing (used for debugging).'),
     ),
     '#default_value' => $settings['ipn_logging'],
+  );
+
+  return $form;
+}
+
+/**
+ * Payment method callback: adds a message and CSS to the submission form.
+ */
+function commerce_paypal_wps_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
+  $form['paypal_wps_information'] = array(
+    '#markup' => '<span class="commerce-paypal-wps-info">' . t('(Continue with checkout to complete payment via Paypal.)') . '</span>',
+    '#attached' => array(
+      'css' => array(drupal_get_path('module', 'commerce_paypal_wps') . '/theme/commerce_paypal_wps.css'),
+    ),
   );
 
   return $form;

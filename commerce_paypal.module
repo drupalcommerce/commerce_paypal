@@ -205,8 +205,6 @@ function commerce_paypal_ipn_save(&$ipn) {
 
     return drupal_write_record('commerce_paypal_ipn', $ipn);
   }
-
-  return $ipn;
 }
 
 /**
@@ -353,4 +351,31 @@ function commerce_paypal_cvv_match_message($code) {
     default:
       return t('Not checked');
   }
+}
+
+/**
+ * Returns an array of PayPal payment method icon img elements.
+ *
+ * @return
+ *   The array of themed payment method icons keyed by name: visa, mastercard,
+ *   amex, discover, echeck, paypal
+ */
+function commerce_paypal_icons() {
+  $icons = array();
+
+  $payment_methods = array(
+    'visa' => t('Visa'),
+    'mastercard' => t('Mastercard'),
+    'amex' => t('American Express'),
+    'discover' => t('Discover'),
+    'echeck' => t('eCheck'),
+    'paypal' => t('PayPal'),
+  );
+
+  foreach ($payment_methods as $name => $title) {
+    $path = url(drupal_get_path('module', 'commerce_paypal') . '/images/' . $name . '.gif', array('absolute' => TRUE));
+    $icons[$name] = '<img src="' . $path . '" alt="' . $title . '" title="' . $title . '" class="commerce-paypal-icon" />';
+  }
+
+  return $icons;
 }
