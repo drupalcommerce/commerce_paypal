@@ -373,8 +373,15 @@ function commerce_paypal_icons() {
   );
 
   foreach ($payment_methods as $name => $title) {
-    $path = url(drupal_get_path('module', 'commerce_paypal') . '/images/' . $name . '.gif', array('absolute' => TRUE));
-    $icons[$name] = '<img src="' . $path . '" alt="' . $title . '" title="' . $title . '" class="commerce-paypal-icon" />';
+    $variables = array(
+      'path' => drupal_get_path('module', 'commerce_paypal') . '/images/' . $name . '.gif',
+      'title' => $title,
+      'alt' => $title,
+      'attributes' => array(
+        'class' => array('commerce-paypal-icon'),
+      ),
+    );
+    $icons[$name] = theme('image', $variables);
   }
 
   return $icons;
