@@ -243,7 +243,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   );
 
   // Submit the request to PayPal.
-  $response = commerce_paypal_wpp_request($payment_method, $nvp);
+  $response = commerce_paypal_wpp_request($payment_method, $nvp, $order);
 
   // Prepare a transaction object to log the API response.
   $transaction = commerce_payment_transaction_new('paypal_wpp', $order->order_id);
@@ -326,7 +326,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
  * @param $nvp
  *   The set of name-value pairs describing the transaction to submit.
  */
-function commerce_paypal_wpp_request($payment_method, $nvp = array()) {
+function commerce_paypal_wpp_request($payment_method, $nvp = array(), $order = NULL) {
   // Get the API endpoint URL for the method's transaction mode.
   $url = commerce_paypal_wpp_server_url($payment_method['settings']['server']);
 
@@ -340,7 +340,7 @@ function commerce_paypal_wpp_request($payment_method, $nvp = array()) {
   );
 
   // Allow modules to alter parameters of the API request.
-  drupal_alter('commerce_paypal_wpp_request', $nvp);
+  drupal_alter('commerce_paypal_wpp_request', $nvp, $order);
 
   // Log the request if specified.
   if ($payment_method['settings']['log']['request'] == 'request') {
