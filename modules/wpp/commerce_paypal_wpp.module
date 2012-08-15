@@ -238,7 +238,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     'STREET2' => substr($billing_address['premise'], 0, 100),
     'CITY' => substr($billing_address['locality'], 0, 40),
     'STATE' => substr($billing_address['administrative_area'], 0, 40),
-    'COUNTRY' => $billing_address['country'],
+    'COUNTRYCODE' => $billing_address['country'],
     'ZIP' => substr($billing_address['postal_code'], 0, 20),
   );
 
