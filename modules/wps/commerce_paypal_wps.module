@@ -329,6 +329,9 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
     'os0_1' => commerce_line_items_quantity($wrapper->commerce_line_items, commerce_product_line_item_types()),
   );
 
+  // Allow modules to alter parameters of the API request.
+  drupal_alter('commerce_paypal_wps_order_form_data', $data, $order);
+
   $form['#action'] = commerce_paypal_wps_server_url($settings['server']);
 
   foreach ($data as $name => $value) {
