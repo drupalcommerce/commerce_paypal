@@ -167,13 +167,25 @@ function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) 
     return FALSE;
   }
 
-  watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number with ID @txn_id.', array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id']), WATCHDOG_NOTICE);
+  if (!empty($ipn['txn_id'])) {
+    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number with ID @txn_id.', array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id']), WATCHDOG_NOTICE);
+  }
+  else {
+    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number.', array('@order_number' => $order->order_number), WATCHDOG_NOTICE);
+  }
 }
 
 /**
  * Payment method callback: process an IPN once it's been validated.
  */
 function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) {
+  // Do not perform any processing on WPS transactions here that do not have
+  // transaction IDs, indicating they are non-payment IPNs such as those used
+  // for subscription signup requests.
+  if (empty($ipn['txn_id'])) {
+    return FALSE;
+  }
+
   // Exit when we don't get a payment status we recognize.
   if (!in_array($ipn['payment_status'], array('Failed', 'Voided', 'Pending', 'Completed', 'Refunded'))) {
     commerce_payment_redirect_pane_previous_page($order);
