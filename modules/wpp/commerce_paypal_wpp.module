@@ -174,6 +174,31 @@ function commerce_paypal_wpp_submit_form_validate($payment_method, $pane_form, $
 function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $charge) {
   $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
 
+  // PayPal WPP requires a billing address, so ensure one has been added to the
+  // order before building the name-value pair array.
+  if (empty($order->commerce_customer_billing) ||
+    empty($order_wrapper->commerce_customer_billing->value()->commerce_customer_address) ||
+    ($value = $order_wrapper->commerce_customer_billing->commerce_customer_address->value() &&
+    (empty($value['thoroughfare']) || empty($value['postal_code'])))) {
+    // Display a general error to the customer if we can't find the address.
+    drupal_set_message(t('We cannot process your credit card payment without a valid billing address.'), 'error');
+
+    // Provide a more descriptive error message in the failed transaction and
+    // the watchdog.
+    $transaction = commerce_payment_transaction_new('paypal_wpp', $order->order_id);
+    $transaction->instance_id = $payment_method['instance_id'];
+    $transaction->amount = $charge['amount'];
+    $transaction->currency_code = $payment_method['settings']['currency_code'];
+    $transaction->payload[REQUEST_TIME] = array();
+    $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+    $transaction->message = t('The customer must be able to supply a billing address through the default address field of the core billing information customer profile to pay via PayPal WPP.');
+    commerce_payment_transaction_save($transaction);
+
+    watchdog('commerce_paypal_wpp', 'A PayPal WPP transaction failed because the order did not have a value for the default billing address field. Your order or checkout configuration may need to be adjusted to support credit card payment via PayPal WPP.', NULL, WATCHDOG_ERROR);
+
+    return FALSE;
+  }
+
   // Build a name-value pair array for this transaction.
   $nvp = array(
     'METHOD' => 'DoDirectPayment',
