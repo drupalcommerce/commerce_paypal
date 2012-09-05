@@ -45,11 +45,12 @@ function commerce_paypal_wpp_default_settings() {
 /**
  * Payment method callback: settings form.
  */
-function commerce_paypal_wpp_settings_form($settings = NULL) {
+function commerce_paypal_wpp_settings_form($settings = array()) {
   module_load_include('inc', 'commerce_payment', 'includes/commerce_payment.credit_card');
-  $settings += commerce_paypal_wpp_default_settings();
-
   $form = array();
+
+  // Merge default settings into the stored settings array.
+  $settings = (array) $settings + commerce_paypal_wpp_default_settings();
 
   $form['api_username'] = array(
     '#type' => 'textfield',

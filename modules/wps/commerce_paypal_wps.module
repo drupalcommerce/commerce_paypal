@@ -31,15 +31,12 @@ function commerce_paypal_wps_commerce_payment_method_info() {
 }
 
 /**
- * Payment method callback: settings form.
+ * Returns the default settings for the PayPal WPS payment method.
  */
-function commerce_paypal_wps_settings_form($settings = NULL) {
-  $form = array();
-
-  // Merge default settings into the stored settings array.
+function commerce_paypal_wps_default_settings() {
   $default_currency = variable_get('commerce_default_currency', 'USD');
 
-  $settings = (array) $settings + array(
+  return array(
     'business' => '',
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_wps_currencies())) ? $default_currency : 'USD',
     'language' => 'US',
@@ -47,6 +44,16 @@ function commerce_paypal_wps_settings_form($settings = NULL) {
     'payment_action' => 'sale',
     'ipn_logging' => 'notification',
   );
+}
+
+/**
+ * Payment method callback: settings form.
+ */
+function commerce_paypal_wps_settings_form($settings = array()) {
+  $form = array();
+
+  // Merge default settings into the stored settings array.
+  $settings = (array) $settings + commerce_paypal_wps_default_settings();
 
   $form['business'] = array(
     '#type' => 'textfield',
