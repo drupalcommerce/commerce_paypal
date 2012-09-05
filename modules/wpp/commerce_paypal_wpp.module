@@ -495,15 +495,8 @@ function commerce_paypal_wpp_card_type($card_type) {
 }
 
 /**
- * Returns an array of all possible language codes.
- */
-function commerce_paypal_wpp_languages() {
-  return drupal_map_assoc(array('AU', 'DE', 'FR', 'IT', 'GB', 'ES', 'US'));
-}
-
-/**
- * Returns an array of all possible currency codes.
+ * Returns an array of all possible Direct Payment currency codes.
  */
 function commerce_paypal_wpp_currencies() {
-  return drupal_map_assoc(array('AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TWD', 'USD'));
+  return drupal_map_assoc(array('AUD', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'JPY', 'NOK', 'NZD', 'PLN', 'SEK', 'SGD', 'USD'));
 }

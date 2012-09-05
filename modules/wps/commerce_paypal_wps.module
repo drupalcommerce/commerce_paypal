@@ -71,7 +71,7 @@ function commerce_paypal_wps_settings_form($settings = array()) {
   );
   $form['language'] = array(
     '#type' => 'select',
-    '#title' => t('PayPal login page language'),
+    '#title' => t('PayPal login page language / locale'),
     '#options' => commerce_paypal_wps_languages(),
     '#default_value' => $settings['language'],
   );
@@ -386,12 +386,47 @@ function commerce_paypal_wps_server_url($server) {
  * Returns an array of all possible language codes.
  */
 function commerce_paypal_wps_languages() {
-  return drupal_map_assoc(array('AU', 'DE', 'FR', 'IT', 'GB', 'ES', 'US'));
+  return array(
+    t('By country') => array(
+      'AU' => t('Australia'),
+      'AT' => t('Austria'),
+      'BE' => t('Belgium'),
+      'BR' => t('Brazil'),
+      'CA' => t('Canada'),
+      'CN' => t('China'),
+      'FR' => t('France'),
+      'DE' => t('Germany'),
+      'IT' => t('Italy'),
+      'NL' => t('Netherlands'),
+      'PL' => t('Poland'),
+      'PT' => t('Portugal'),
+      'RU' => t('Russia'),
+      'ES' => t('Spain'),
+      'CH' => t('Switzerland'),
+      'GB' => t('United Kingdom'),
+      'US' => t('United States'),
+    ),
+    t('By language') => array(
+      'da_DK' => t('Danish (for Denmark only)'),
+      'he_IL' => t('Hebrew (for all)'),
+      'id_ID' => t('Indonesian (for Indonesia only)'),
+      'jp_JP' => t('Japanese (for Japan only)'),
+      'no_NO' => t('Norwegian (for Norway only)'),
+      'pt_BR' => t('Brazilian Portuguese (for Portugal and Brazil only)'),
+      'ru_RU' => t('Russian (for Lithuania, Latvia, and Ukraine only)'),
+      'sv_SE' => t('Swedish (for Sweden only)'),
+      'th_TH' => t('Thai (for Thailand only)'),
+      'tr_TR' => t('Turkish (for Turkey only)'),
+      'zh_CN' => t('Simplified Chinese (for China only)'),
+      'zh_HK' => t('Traditional Chinese (for Hong Kong only)'),
+      'zh_TW' => t('Traditional Chinese (for Taiwan only)'),
+    ),
+  );
 }
 
 /**
  * Returns an array of all possible currency codes.
  */
 function commerce_paypal_wps_currencies() {
-  return drupal_map_assoc(array('AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TWD', 'USD'));
+  return drupal_map_assoc(array('AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD'));
 }
