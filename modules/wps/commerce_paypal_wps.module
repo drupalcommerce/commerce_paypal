@@ -144,7 +144,7 @@ function commerce_paypal_wps_redirect_form($form, &$form_state, $order, $payment
 function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
   if (!empty($payment_method['settings']['ipn_logging']) &&
     $payment_method['settings']['ipn_logging'] == 'full_ipn') {
-    watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>', array(), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
   }
 
   // This may be an unnecessary step, but if for some reason the user does end
@@ -167,11 +167,20 @@ function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) 
     return FALSE;
   }
 
+  // Prepare the IPN data for inclusion in the watchdog message if enabled.
+  $ipn_data = '';
+
+  if (!empty($payment_method['settings']['ipn_logging']) &&
+    $payment_method['settings']['ipn_logging'] == 'full_ipn') {
+    $ipn_data = '<pre>' . check_plain(print_r($ipn, TRUE)) . '</pre>';
+  }
+
+  // Log a message including the PayPal transaction ID if available.
   if (!empty($ipn['txn_id'])) {
-    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number with ID @txn_id.', array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id']), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number with ID @txn_id.!ipn_data', array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id'], '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
   }
   else {
-    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number.', array('@order_number' => $order->order_number), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number.!ipn_data', array('@order_number' => $order->order_number, '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
   }
 }
 
