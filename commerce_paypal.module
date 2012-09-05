@@ -72,7 +72,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
     $variables = array('cmd=_notify-validate');
 
     foreach ($ipn as $key => $value) {
-      $variables[] = $key . '=' . urlencode(stripslashes($value));
+      $variables[] = $key . '=' . urlencode($value);
     }
 
     // Determine the proper PayPal server to POST to.
