@@ -37,6 +37,7 @@ function commerce_paypal_wpp_default_settings() {
     'code' => TRUE,
     'card_types' => drupal_map_assoc(array('visa', 'mastercard', 'amex', 'discover')),
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_wpp_currencies())) ? $default_currency : 'USD',
+    'allow_supported_currencies' => FALSE,
     'txn_type' => COMMERCE_CREDIT_AUTH_CAPTURE,
     'log' => array('request' => 0, 'response' => 0),
   );
@@ -92,10 +93,16 @@ function commerce_paypal_wpp_settings_form($settings = array()) {
   );
   $form['currency_code'] = array(
     '#type' => 'select',
-    '#title' => t('Currency code'),
-    '#description' => t('Transactions can only be processed in one of the listed currencies.'),
+    '#title' => t('Default currency'),
+    '#description' => t('Transactions in other currencies will be converted to this currency, so multi-currency sites must be configured to use appropriate conversion rates.'),
     '#options' => commerce_paypal_wpp_currencies(),
     '#default_value' => $settings['currency_code'],
+  );
+  $form['allow_supported_currencies'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Allow transactions to use any currency in the options list above.'),
+    '#description' => t('Transactions in unsupported currencies will still be converted into the default currency.'),
+    '#default_value' => $settings['allow_supported_currencies'],
   );
   $form['txn_type'] = array(
     '#type' => 'radios',
@@ -177,10 +184,22 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
 
   // PayPal WPP requires a billing address, so ensure one has been added to the
   // order before building the name-value pair array.
-  if (empty($order->commerce_customer_billing) ||
-    empty($order_wrapper->commerce_customer_billing->value()->commerce_customer_address) ||
-    ($value = $order_wrapper->commerce_customer_billing->commerce_customer_address->value() &&
-    (empty($value['thoroughfare']) || empty($value['postal_code'])))) {
+  $valid_billing_address = TRUE;
+
+  if (empty($order->commerce_customer_billing) || empty($order_wrapper->commerce_customer_billing->value()->commerce_customer_address)) {
+    $valid_billing_address = FALSE;
+  }
+
+  // Check the values in the billing address array required by PayPal.
+  $address_value = $order_wrapper->commerce_customer_billing->commerce_customer_address->value();
+
+  if (empty($value['thoroughfare']) || empty($value['postal_code'])) {
+    $billing_address_found = FALSE;
+  }
+
+  // Without a valid villing address, display and log the error messages and
+  // prevent the payment attempt.
+  if (!$valid_billing_address) {
     // Display a general error to the customer if we can't find the address.
     drupal_set_message(t('We cannot process your credit card payment without a valid billing address.'), 'error');
 
@@ -200,6 +219,15 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     return FALSE;
   }
 
+  // Determine the currency code to use to actually process the transaction,
+  // which will either be the default currency code or the currency code of the
+  // charge if it's supported by PayPal if that option is enabled.
+  $currency_code = $payment_method['settings']['currency_code'];
+
+  if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($charge['currency_code'], array_keys(commerce_paypal_wpp_currencies()))) {
+    $currency_code = $charge['currency_code'];
+  }
+
   // Build a name-value pair array for this transaction.
   $nvp = array(
     'METHOD' => 'DoDirectPayment',
@@ -209,8 +237,8 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     'CREDITCARDTYPE' => commerce_paypal_wpp_card_type($pane_values['credit_card']['type']),
     'ACCT' => $pane_values['credit_card']['number'],
     'EXPDATE' => $pane_values['credit_card']['exp_month'] . $pane_values['credit_card']['exp_year'],
-    'AMT' => commerce_currency_amount_to_decimal(commerce_currency_convert($charge['amount'], $charge['currency_code'], $payment_method['settings']['currency_code']), $charge['currency_code']),
-    'CURRENCYCODE' => $payment_method['settings']['currency_code'],
+    'AMT' => commerce_currency_amount_to_decimal(commerce_currency_convert($charge['amount'], $charge['currency_code'], $currency_code), $currency_code),
+    'CURRENCYCODE' => $currency_code,
   );
 
   // Add the start date and issue number if processing a Maestro or Solo card.
