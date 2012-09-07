@@ -219,6 +219,13 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     return FALSE;
   }
 
+  // Display an error and prevent the payment attempt if PayPal WPP has not been
+  // configured yet.
+  if (empty($payment_method['settings'])) {
+    drupal_set_message(t('This payment method must be configured by an administrator before it can be used.'), 'error');
+    return FALSE;
+  }
+
   // Determine the currency code to use to actually process the transaction,
   // which will either be the default currency code or the currency code of the
   // charge if it's supported by PayPal if that option is enabled.
