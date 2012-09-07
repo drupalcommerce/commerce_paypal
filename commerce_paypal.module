@@ -65,8 +65,16 @@ function commerce_paypal_ipn_url($method_id = NULL) {
  */
 function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array()) {
   // Retrieve the IPN from $_POST if the caller did not supply an IPN array.
+  // Note that Drupal has already run stripslashes() on the contents of the
+  // $_POST array at this point, so we don't need to worry about them.
   if (empty($debug_ipn)) {
     $ipn = $_POST;
+
+    // Exit now if the $_POST was empty.
+    if (empty($ipn)) {
+      watchdog('commerce_paypal', 'IPN URL accessed with no POST data submitted.', array(), WATCHDOG_WARNING);
+      return FALSE;
+    }
 
     // Prepare an array to POST back to PayPal to validate the IPN.
     $variables = array('cmd=_notify-validate');
@@ -95,6 +103,7 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
     // If the IPN was invalid, log a message and exit.
     if ($response->data == 'INVALID') {
       watchdog('commerce_paypal', 'Invalid IPN received and ignored.', array(), WATCHDOG_ALERT);
+      return FALSE;
     }
   }
   else {
