@@ -19,6 +19,12 @@ function commerce_paypal_wpp_capture_form($form, &$form_state, $order, $transact
 
   $balance = commerce_payment_order_balance($order);
 
+  // Convert the balance to the transaction currency.
+  if ($balance['currency_code'] != $transaction->currency_code) {
+    $balance['amount'] = commerce_currency_convert($balance['amount'], $balance['currency_code'], $transaction->currency_code);
+    $balance['currency_code'] = $transaction->currency_code;
+  }
+
   if ($balance['amount'] > 0 && $balance['amount'] < $transaction->amount) {
     $default_amount = $balance['amount'];
   }
@@ -112,7 +118,7 @@ function commerce_paypal_wpp_capture_form_submit($form, &$form_state) {
     if (!empty($response['AUTHORIZATIONID'])) {
       // Update the original transaction with the new ID to use when capturing.
       $transaction->remote_id = $response['AUTHORIZATIONID'];
-    } 
+    }
     else {
       // Otherwise do not allow the capture to proceed.
       $transaction->message .= '<br />' . t('Reauthorization failed: @time', array('@time' => format_date(REQUEST_TIME, 'short')));

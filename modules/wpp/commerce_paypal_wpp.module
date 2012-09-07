@@ -229,10 +229,28 @@ function commerce_paypal_wpp_submit_form_validate($payment_method, $pane_form, $
  * Payment method callback: checkout form submission.
  */
 function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $charge) {
-  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  // Display an error and prevent the payment attempt if PayPal WPP has not been
+  // configured yet.
+  if (empty($payment_method['settings'])) {
+    drupal_set_message(t('This payment method must be configured by an administrator before it can be used.'), 'error');
+    return FALSE;
+  }
+
+  // Determine the currency code to use to actually process the transaction,
+  // which will either be the default currency code or the currency code of the
+  // charge if it's supported by PayPal if that option is enabled.
+  $currency_code = $payment_method['settings']['currency_code'];
+
+  if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($charge['currency_code'], array_keys(commerce_paypal_wpp_currencies()))) {
+    $currency_code = $charge['currency_code'];
+  }
+
+  // Convert the charge amount to the specified currency.
+  $amount = commerce_currency_convert($charge['amount'], $charge['currency_code'], $currency_code);
 
   // PayPal WPP requires a billing address, so ensure one has been added to the
   // order before building the name-value pair array.
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $valid_billing_address = TRUE;
 
   if (empty($order->commerce_customer_billing) || empty($order_wrapper->commerce_customer_billing->value()->commerce_customer_address)) {
@@ -262,8 +280,8 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     // the watchdog.
     $transaction = commerce_payment_transaction_new('paypal_wpp', $order->order_id);
     $transaction->instance_id = $payment_method['instance_id'];
-    $transaction->amount = $charge['amount'];
-    $transaction->currency_code = $payment_method['settings']['currency_code'];
+    $transaction->amount = $amount;
+    $transaction->currency_code = $currency_code;
     $transaction->payload[REQUEST_TIME] = array();
     $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
     $transaction->message = t('The customer must be able to supply a billing address through the default address field of the core billing information customer profile to pay via PayPal WPP.');
@@ -272,22 +290,6 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     watchdog('commerce_paypal_wpp', 'A PayPal WPP transaction failed because the order did not have a value for the default billing address field. Your order or checkout configuration may need to be adjusted to support credit card payment via PayPal WPP.', NULL, WATCHDOG_ERROR);
 
     return FALSE;
-  }
-
-  // Display an error and prevent the payment attempt if PayPal WPP has not been
-  // configured yet.
-  if (empty($payment_method['settings'])) {
-    drupal_set_message(t('This payment method must be configured by an administrator before it can be used.'), 'error');
-    return FALSE;
-  }
-
-  // Determine the currency code to use to actually process the transaction,
-  // which will either be the default currency code or the currency code of the
-  // charge if it's supported by PayPal if that option is enabled.
-  $currency_code = $payment_method['settings']['currency_code'];
-
-  if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($charge['currency_code'], array_keys(commerce_paypal_wpp_currencies()))) {
-    $currency_code = $charge['currency_code'];
   }
 
   // Build a name-value pair array for this transaction.
@@ -299,7 +301,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     'CREDITCARDTYPE' => commerce_paypal_wpp_card_type($pane_values['credit_card']['type']),
     'ACCT' => $pane_values['credit_card']['number'],
     'EXPDATE' => $pane_values['credit_card']['exp_month'] . $pane_values['credit_card']['exp_year'],
-    'AMT' => commerce_currency_amount_to_decimal(commerce_currency_convert($charge['amount'], $charge['currency_code'], $currency_code), $currency_code),
+    'AMT' => commerce_currency_amount_to_decimal($amount, $currency_code),
     'CURRENCYCODE' => $currency_code,
   );
 
@@ -364,8 +366,8 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   // Prepare a transaction object to log the API response.
   $transaction = commerce_payment_transaction_new('paypal_wpp', $order->order_id);
   $transaction->instance_id = $payment_method['instance_id'];
-  $transaction->amount = $charge['amount'];
-  $transaction->currency_code = $payment_method['settings']['currency_code'];
+  $transaction->amount = $amount;
+  $transaction->currency_code = $currency_code;
   $transaction->payload[REQUEST_TIME] = $response;
 
   // Build a meaningful response message.
