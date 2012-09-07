@@ -119,12 +119,28 @@ function commerce_paypal_wps_settings_form($settings = array()) {
 function commerce_paypal_wps_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
   $form['paypal_wps_information'] = array(
     '#markup' => '<span class="commerce-paypal-wps-info">' . t('(Continue with checkout to complete payment via Paypal.)') . '</span>',
-    '#attached' => array(
-      'css' => array(drupal_get_path('module', 'commerce_paypal_wps') . '/theme/commerce_paypal_wps.css'),
-    ),
   );
 
   return $form;
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function commerce_paypal_wps_form_commerce_checkout_form_alter(&$form, &$form_state) {
+  // If this checkout form contains the payment method radios...
+  if (!empty($form['commerce_payment']['payment_method']['#options'])) {
+    // Loop over its options array looking for a PayPal WPS option.
+    foreach (array_keys($form['commerce_payment']['payment_method']['#options']) as $key) {
+      list($method_id, $rule_name) = explode('|', $key);
+
+      // If we find PayPal WPS, include its CSS on the form and exit the loop.
+      if ($method_id == 'paypal_wps') {
+        $form['commerce_payment']['payment_method']['#attached']['css'][] = drupal_get_path('module', 'commerce_paypal_wps') . '/theme/commerce_paypal_wps.theme.css';
+        break;
+      }
+    }
+  }
 }
 
 /**
