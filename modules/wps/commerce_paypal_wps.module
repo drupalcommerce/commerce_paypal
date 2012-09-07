@@ -44,6 +44,7 @@ function commerce_paypal_wps_default_settings() {
     'server' => 'sandbox',
     'payment_action' => 'sale',
     'ipn_logging' => 'notification',
+    'show_payment_instructions' => FALSE,
   );
 }
 
@@ -109,17 +110,27 @@ function commerce_paypal_wps_settings_form($settings = array()) {
     ),
     '#default_value' => $settings['ipn_logging'],
   );
+  $form['show_payment_instructions'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show a message on the checkout form when PayPal WPS is selected telling the customer to "Continue with checkout to complete payment via PayPal."'),
+    '#default_value' => $settings['show_payment_instructions'],
+  );
 
   return $form;
 }
 
 /**
- * Payment method callback: adds a message and CSS to the submission form.
+ * Payment method callback: adds a message and CSS to the submission form if
+ * enabled in the payment method settings.
  */
 function commerce_paypal_wps_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
-  $form['paypal_wps_information'] = array(
-    '#markup' => '<span class="commerce-paypal-wps-info">' . t('(Continue with checkout to complete payment via Paypal.)') . '</span>',
-  );
+  $form = array();
+
+  if (!empty($payment_method['settings']['show_payment_instructions'])) {
+    $form['paypal_wps_information'] = array(
+      '#markup' => '<span class="commerce-paypal-wps-info">' . t('(Continue with checkout to complete payment via Paypal.)') . '</span>',
+    );
+  }
 
   return $form;
 }
