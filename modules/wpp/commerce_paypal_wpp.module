@@ -7,6 +7,55 @@
 
 
 /**
+ * Implements hook_menu().
+ */
+function commerce_paypal_wpp_menu() {
+  $items = array();
+
+  // Add a menu item for capturing authorizations.
+  $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/paypal-wpp-capture'] = array(
+    'title' => 'Capture',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_paypal_wpp_capture_form', 3, 5),
+    'access callback' => 'commerce_paypal_wpp_capture_access',
+    'access arguments' => array(3, 5),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 2,
+    'file' => 'includes/commerce_paypal_wpp.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Determines access to the prior authorization capture form for PayPal WPP
+ * credit card transactions.
+ *
+ * @param $order
+ *   The order the transaction is on.
+ * @param $transaction
+ *   The payment transaction object to be captured.
+ *
+ * @return
+ *   TRUE or FALSE indicating capture access.
+ */
+function commerce_paypal_wpp_capture_access($order, $transaction) {
+  // Return FALSE if the transaction isn't for PayPal or isn't awaiting capture.
+  if ($transaction->payment_method != 'paypal_wpp' || $transaction->remote_status != 'Authorization') {
+    return FALSE;
+  }
+
+  // Return FALSE if it is more than 29 days past the original authorization.
+  if (REQUEST_TIME - $transaction->created > 86400 * 29) {
+    return FALSE;
+  }
+
+  // Allow access if the user can update payments on this transaction.
+  return commerce_payment_transaction_access('update', $transaction);
+}
+
+/**
  * Implements hook_commerce_payment_method_info().
  */
 function commerce_paypal_wpp_commerce_payment_method_info() {
