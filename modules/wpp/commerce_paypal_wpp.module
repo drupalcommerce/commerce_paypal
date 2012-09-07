@@ -193,8 +193,14 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   // Check the values in the billing address array required by PayPal.
   $address_value = $order_wrapper->commerce_customer_billing->commerce_customer_address->value();
 
-  if (empty($value['thoroughfare']) || empty($value['postal_code'])) {
-    $billing_address_found = FALSE;
+  if (empty($address_value['name_line']) && empty($address_value['first_name'])) {
+    $valid_billing_address = FALSE;
+  }
+
+  foreach (array('thoroughfare', 'locality', 'postal_code', 'country') as $address_key) {
+    if (empty($address_value[$address_key])) {
+      $valid_billing_address = FALSE;
+    }
   }
 
   // Without a valid villing address, display and log the error messages and
