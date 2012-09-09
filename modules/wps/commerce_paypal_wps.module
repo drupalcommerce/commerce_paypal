@@ -61,7 +61,7 @@ function commerce_paypal_wps_settings_form($settings = array()) {
   $form['business'] = array(
     '#type' => 'textfield',
     '#title' => t('PayPal e-mail address'),
-    '#description' => t('The e-mail address you use for the PayPal account you want to receive payments.'),
+    '#description' => t('The primary e-mail address of the PayPal account you want to use to receive payments.'),
     '#default_value' => $settings['business'],
     '#required' => TRUE,
   );
@@ -209,9 +209,9 @@ function commerce_paypal_wps_redirect_form_validate($order, $payment_method) {
 function commerce_paypal_wps_paypal_ipn_validate($order, $payment_method, $ipn) {
   // Return FALSE if the receiver e-mail does not match the one specified by
   // the payment method instance.
-  if ($ipn['receiver_email'] != $payment_method['settings']['business']) {
+  if (trim(strtolower($ipn['receiver_email'])) != trim(strtolower($payment_method['settings']['business']))) {
     commerce_payment_redirect_pane_previous_page($order);
-    watchdog('commerce_paypal_wps', 'IPN rejected: invalid receiver e-mail specified (@receiver_email).', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_wps', 'IPN rejected: invalid receiver e-mail specified (@receiver_email); must match the primary e-mail address on the PayPal account.', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
     return FALSE;
   }
 
