@@ -45,6 +45,7 @@ function commerce_paypal_wps_default_settings() {
     'payment_action' => 'sale',
     'ipn_logging' => 'notification',
     'show_payment_instructions' => FALSE,
+    'ipn_create_billing_profile' => FALSE,
   );
 }
 
@@ -114,6 +115,12 @@ function commerce_paypal_wps_settings_form($settings = array()) {
     '#type' => 'checkbox',
     '#title' => t('Show a message on the checkout form when PayPal WPS is selected telling the customer to "Continue with checkout to complete payment via PayPal."'),
     '#default_value' => $settings['show_payment_instructions'],
+  );
+  $form['ipn_create_billing_profile'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Create a billing profile based on name and country data in the IPN for any order that does not have one yet.'),
+    '#description' => t('This is most useful for sites that do not collect billing information locally but still want to have customer names on orders.'),
+    '#default_value' => $settings['ipn_create_billing_profile'],
   );
 
   return $form;
@@ -294,6 +301,41 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
   // Save the transaction information.
   commerce_payment_transaction_save($transaction);
   $ipn['transaction_id'] = $transaction->transaction_id;
+
+  // Create a billing profile based on the IPN if enabled.
+  if (!empty($payment_method['settings']['ipn_create_billing_profile']) && isset($order->commerce_customer_billing)) {
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+
+    // If this order does not have a billing profile yet...
+    if ($order_wrapper->commerce_customer_billing->value() === NULL) {
+      // Ensure we have the required data in the IPN.
+      if (empty($ipn['residence_country']) || empty($ipn['first_name']) || empty($ipn['last_name'])) {
+        $data = array_intersect_key($ipn, drupal_map_assoc(array('residence_country', 'first_name', 'last_name')));
+        watchdog('commerce_paypal_wps', 'A billing profile for Order @order_number could not be created due to insufficient data in the IPN:!data', array('@order_number' => $order->order_number, '!data' => '<pre>'. check_plain(print_r($data, TRUE)) .'</pre>'), WATCHDOG_WARNING);
+      }
+      else {
+        // Create the new profile now.
+        $profile = commerce_customer_profile_new('billing', $order->uid);
+
+        // Add the address value.
+        $profile_wrapper = entity_metadata_wrapper('commerce_customer_profile', $profile);
+
+        $profile_wrapper->commerce_customer_address = array_merge(addressfield_default_values(), array(
+          'country' => $ipn['residence_country'],
+          'name_line' => $ipn['first_name'] . ' ' . $ipn['last_name'],
+          'first_name' => $ipn['first_name'],
+          'last_name' => $ipn['last_name'],
+        ));
+
+        // Save the profile, reference it from the order, and save the order.
+        $profile_wrapper->save();
+        $order_wrapper->commerce_customer_billing = $profile_wrapper;
+        $order_wrapper->save();
+
+        watchdog('commerce_paypal_wps', 'Billing profile created for Order @order_number containing the first and last names and residence country of the customer based on IPN data.', array('@order_number' => $order->order_number));
+      }
+    }
+  }
 
   commerce_payment_redirect_pane_next_page($order);
   watchdog('commerce_paypal_wps', 'IPN processed for Order @order_number with ID @txn_id.', array('@txn_id' => $ipn['txn_id'], '@order_number' => $order->order_number), WATCHDOG_INFO);
