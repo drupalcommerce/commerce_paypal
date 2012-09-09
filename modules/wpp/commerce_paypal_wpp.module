@@ -271,17 +271,18 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   if (empty($order->commerce_customer_billing) || empty($order_wrapper->commerce_customer_billing->value()->commerce_customer_address)) {
     $valid_billing_address = FALSE;
   }
+  else {
+    // Check the values in the billing address array required by PayPal.
+    $address_value = $order_wrapper->commerce_customer_billing->commerce_customer_address->value();
 
-  // Check the values in the billing address array required by PayPal.
-  $address_value = $order_wrapper->commerce_customer_billing->commerce_customer_address->value();
-
-  if (empty($address_value['name_line']) && empty($address_value['first_name'])) {
-    $valid_billing_address = FALSE;
-  }
-
-  foreach (array('thoroughfare', 'locality', 'postal_code', 'country') as $address_key) {
-    if (empty($address_value[$address_key])) {
+    if (empty($address_value['name_line']) && empty($address_value['first_name'])) {
       $valid_billing_address = FALSE;
+    }
+
+    foreach (array('thoroughfare', 'locality', 'postal_code', 'country') as $address_key) {
+      if (empty($address_value[$address_key])) {
+        $valid_billing_address = FALSE;
+      }
     }
   }
 
