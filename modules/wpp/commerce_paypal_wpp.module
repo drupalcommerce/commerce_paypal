@@ -236,6 +236,21 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
     return FALSE;
   }
 
+  // Ensure we can determine a valid IPv4 IP address as required by PayPal WPP.
+  $ip_address = ip_address();
+
+  // Go ahead and convert localhost from IPv6 to IPv4.
+  if ($ip_address == '::1') {
+    $ip_address = '127.0.0.1';
+    watchdog('commerce_paypal_wpp', 'PayPal WPP must be able to retrieve an IPv4 IP address from the ip_address() function when not testing payments from localhost. While testing from localhost, your IPv6 address ::1 was automatically converted to 127.0.0.1.', array(), WATCHDOG_WARNING);
+  }
+
+  if (!filter_var($ip_address, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+    drupal_set_message(t('This payment method is not supported by the current web server configuration.'), 'error');
+    watchdog('commerce_paypal_wpp', 'PayPal WPP must be able to retrieve an IPv4 IP address from the ip_address() function when not testing payments from localhost.', array(), WATCHDOG_ERROR);
+    return FALSE;
+  }
+
   // Determine the currency code to use to actually process the transaction,
   // which will either be the default currency code or the currency code of the
   // charge if it's supported by PayPal if that option is enabled.
@@ -349,7 +364,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
 
     // Customer Information
     'EMAIL' => substr($order->mail, 0, 127),
-    'IPADDRESS' => substr(ip_address(), 0, 15),
+    'IPADDRESS' => substr($ip_address, 0, 15),
     'FIRSTNAME' => substr($billing_address['first_name'], 0, 25),
     'LASTNAME' => substr($billing_address['last_name'], 0, 25),
     'STREET' => substr($billing_address['thoroughfare'], 0, 100),
