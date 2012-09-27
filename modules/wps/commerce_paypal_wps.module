@@ -135,7 +135,7 @@ function commerce_paypal_wps_submit_form($payment_method, $pane_values, $checkou
 
   if (!empty($payment_method['settings']['show_payment_instructions'])) {
     $form['paypal_wps_information'] = array(
-      '#markup' => '<span class="commerce-paypal-wps-info">' . t('(Continue with checkout to complete payment via Paypal.)') . '</span>',
+      '#markup' => '<span class="commerce-paypal-wps-info">' . t('(Continue with checkout to complete payment via PayPal.)') . '</span>',
     );
   }
 
