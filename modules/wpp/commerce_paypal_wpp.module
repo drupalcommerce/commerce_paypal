@@ -311,7 +311,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   // Build a name-value pair array for this transaction.
   $nvp = array(
     'METHOD' => 'DoDirectPayment',
-    'PAYMENTACTION' => commerce_paypal_wpp_payment_action($payment_method['settings']['txn_type']),
+    'PAYMENTACTION' => commerce_paypal_payment_action($payment_method['settings']['txn_type']),
     'NOTIFYURL' => commerce_paypal_ipn_url($payment_method['instance_id']),
 
     'CREDITCARDTYPE' => commerce_paypal_wpp_card_type($pane_values['credit_card']['type']),
@@ -377,7 +377,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   );
 
   // Submit the request to PayPal.
-  $response = commerce_paypal_wpp_request($payment_method, $nvp, $order);
+  $response = commerce_paypal_api_request($payment_method, $nvp, $order);
 
   // Prepare a transaction object to log the API response.
   $transaction = commerce_payment_transaction_new('paypal_wpp', $order->order_id);
@@ -388,7 +388,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
 
   // Build a meaningful response message.
   $message = array();
-  $action = commerce_paypal_wpp_reverse_payment_action($nvp['PAYMENTACTION']);
+  $action = commerce_paypal_reverse_payment_action($nvp['PAYMENTACTION']);
 
   // Set the remote ID and transaction status based on the acknowledgment code.
   switch ($response['ACK']) {
@@ -449,136 +449,6 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   if (!in_array($response['ACK'], array('SuccessWithWarning', 'Success'))) {
     drupal_set_message(t('We encountered an error processing your payment. Please verify your credit card details or try a different card.'), 'error');
     return FALSE;
-  }
-}
-
-/**
- * Submits a PayPal WPP API request to PayPal.
- *
- * @param $payment_method
- *   The payment method instance array associated with this API request.
- * @param $nvp
- *   The set of name-value pairs describing the transaction to submit.
- */
-function commerce_paypal_wpp_request($payment_method, $nvp = array(), $order = NULL) {
-  // Get the API endpoint URL for the method's transaction mode.
-  $url = commerce_paypal_wpp_server_url($payment_method['settings']['server']);
-
-  // Add the default name-value pairs to the array.
-  $nvp += array(
-    // API credentials
-    'USER' => $payment_method['settings']['api_username'],
-    'PWD' => $payment_method['settings']['api_password'],
-    'SIGNATURE' => $payment_method['settings']['api_signature'],
-    'VERSION' => '76.0',
-  );
-
-  // Allow modules to alter parameters of the API request.
-  drupal_alter('commerce_paypal_wpp_request', $nvp, $order);
-
-  // Log the request if specified.
-  if ($payment_method['settings']['log']['request'] == 'request') {
-    // Mask the credit card number and CVV.
-    $log_nvp = $nvp;
-    $log_nvp['PWD'] = str_repeat('X', strlen($log_nvp['PWD']));
-    $log_nvp['SIGNATURE'] = str_repeat('X', strlen($log_nvp['SIGNATURE']));
-
-    if (!empty($log_nvp['ACCT'])) {
-      $log_nvp['ACCT'] = str_repeat('X', strlen($log_nvp['ACCT']) - 4) . substr($log_nvp['ACCT'], -4);
-    }
-
-    if (!empty($log_nvp['CVV2'])) {
-      $log_nvp['CVV2'] = str_repeat('X', strlen($log_nvp['CVV2']));
-    }
-
-    watchdog('commerce_paypal', 'PayPal WPP request to @url: !param', array('@url' => $url, '!param' => '<pre>' . check_plain(print_r($log_nvp, TRUE)) . '</pre>'), WATCHDOG_DEBUG);
-  }
-
-  // Prepare the name-value pair array to be sent as a string.
-  $pairs = array();
-
-  foreach ($nvp as $key => $value) {
-    $pairs[] = $key . '=' . urlencode($value);
-  }
-
-  // Setup the cURL request.
-  $ch = curl_init();
-  curl_setopt($ch, CURLOPT_URL, $url);
-  curl_setopt($ch, CURLOPT_VERBOSE, 0);
-  curl_setopt($ch, CURLOPT_POST, 1);
-  curl_setopt($ch, CURLOPT_POSTFIELDS, implode('&', $pairs));
-  curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
-  curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
-  curl_setopt($ch, CURLOPT_NOPROGRESS, 1);
-  curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 0);
-  $result = curl_exec($ch);
-
-  // Log any errors to the watchdog.
-  if ($error = curl_error($ch)) {
-    watchdog('commerce_paypal', 'cURL error: @error', array('@error' => $error), WATCHDOG_ERROR);
-    return FALSE;
-  }
-  curl_close($ch);
-
-  // Make the response an array.
-  $response = array();
-
-  foreach (explode('&', $result) as $nvp) {
-    list($key, $value) = explode('=', $nvp);
-    $response[urldecode($key)] = urldecode($value);
-  }
-
-  // Log the response if specified.
-  if ($payment_method['settings']['log']['response'] == 'response') {
-    watchdog('commerce_paypal', 'PayPal WPP response: !param', array('!param' => '<pre>' . check_plain(print_r($response, TRUE)) . '</pre>', WATCHDOG_DEBUG));
-  }
-
-  return $response;
-}
-
-/**
- * Returns the URL to the specified PayPal WPP server.
- *
- * @param $server
- *   Either sandbox or live indicating which server to get the URL for.
- *
- * @return
- *   The URL to use to submit requests to the PayPal WPP server.
- */
-function commerce_paypal_wpp_server_url($server) {
-  switch ($server) {
-    case 'sandbox':
-      return 'https://api-3t.sandbox.paypal.com/nvp';
-    case 'live':
-      return 'https://api-3t.paypal.com/nvp';
-  }
-}
-
-/**
- * Returns the relevant PayPal payment action for a given transaction type.
- *
- * @param $txn_type
- *   The type of transaction whose payment action should be returned; currently
- *   supports COMMERCE_CREDIT_AUTH_CAPTURE and COMMERCE_CREDIT_AUTH_ONLY.
- */
-function commerce_paypal_wpp_payment_action($txn_type) {
-  switch ($txn_type) {
-    case COMMERCE_CREDIT_AUTH_ONLY:
-      return 'Authorization';
-    case COMMERCE_CREDIT_AUTH_CAPTURE:
-      return 'Sale';
-  }
-}
-
-/**
- * Returns the description of a transaction type for a PayPal WPP payment action.
- */
-function commerce_paypal_wpp_reverse_payment_action($payment_action) {
-  switch (strtoupper($payment_action)) {
-    case 'AUTHORIZATION':
-      return t('Authorization only');
-    case 'SALE':
-      return t('Authorization and capture');
   }
 }
 

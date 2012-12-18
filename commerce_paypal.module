@@ -280,6 +280,148 @@ function commerce_paypal_ipn_pending_reason($pending_reason) {
 }
 
 /**
+ * Submits an API request to PayPal.
+ *
+ * This function is currently used by PayPal Payments Pro and Express Checkout.
+ *
+ * This function may be used for any PayPal payment method that uses the same
+ * settings array structure as these other payment methods and whose API
+ * requests should be submitted to the same URLs as determined by the function
+ * commerce_paypal_api_server_url().
+ *
+ * @param $payment_method
+ *   The payment method instance array associated with this API request.
+ * @param $nvp
+ *   The set of name-value pairs describing the transaction to submit.
+ * @param $order
+ *   The order the payment request is being made for.
+ *
+ * @return
+ *   The response array from PayPal if successful or FALSE on error.
+ */
+function commerce_paypal_api_request($payment_method, $nvp = array(), $order = NULL) {
+  // Get the API endpoint URL for the payment method's transaction mode.
+  $url = commerce_paypal_api_server_url($payment_method['settings']['server']);
+
+  // Add the default name-value pairs to the array.
+  $nvp += array(
+    // API credentials
+    'USER' => $payment_method['settings']['api_username'],
+    'PWD' => $payment_method['settings']['api_password'],
+    'SIGNATURE' => $payment_method['settings']['api_signature'],
+    'VERSION' => '76.0',
+  );
+
+  // Allow modules to alter parameters of the API request.
+  drupal_alter('commerce_paypal_api_request', $nvp, $order, $payment_method);
+
+  // Log the request if specified.
+  if ($payment_method['settings']['log']['request'] == 'request') {
+    // Mask the credit card number and CVV.
+    $log_nvp = $nvp;
+    $log_nvp['PWD'] = str_repeat('X', strlen($log_nvp['PWD']));
+    $log_nvp['SIGNATURE'] = str_repeat('X', strlen($log_nvp['SIGNATURE']));
+
+    if (!empty($log_nvp['ACCT'])) {
+      $log_nvp['ACCT'] = str_repeat('X', strlen($log_nvp['ACCT']) - 4) . substr($log_nvp['ACCT'], -4);
+    }
+
+    if (!empty($log_nvp['CVV2'])) {
+      $log_nvp['CVV2'] = str_repeat('X', strlen($log_nvp['CVV2']));
+    }
+
+    watchdog('commerce_paypal', 'PayPal API request to @url: !param', array('@url' => $url, '!param' => '<pre>' . check_plain(print_r($log_nvp, TRUE)) . '</pre>'), WATCHDOG_DEBUG);
+  }
+
+  // Prepare the name-value pair array to be sent as a string.
+  $pairs = array();
+
+  foreach ($nvp as $key => $value) {
+    $pairs[] = $key . '=' . urlencode($value);
+  }
+
+  // Setup the cURL request.
+  $ch = curl_init();
+  curl_setopt($ch, CURLOPT_URL, $url);
+  curl_setopt($ch, CURLOPT_VERBOSE, 0);
+  curl_setopt($ch, CURLOPT_POST, 1);
+  curl_setopt($ch, CURLOPT_POSTFIELDS, implode('&', $pairs));
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+  curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, 0);
+  curl_setopt($ch, CURLOPT_NOPROGRESS, 1);
+  curl_setopt($ch, CURLOPT_FOLLOWLOCATION, 0);
+  $result = curl_exec($ch);
+
+  // Log any errors to the watchdog.
+  if ($error = curl_error($ch)) {
+    watchdog('commerce_paypal', 'cURL error: @error', array('@error' => $error), WATCHDOG_ERROR);
+    return FALSE;
+  }
+  curl_close($ch);
+
+  // Make the response an array.
+  $response = array();
+
+  foreach (explode('&', $result) as $nvp) {
+    list($key, $value) = explode('=', $nvp);
+    $response[urldecode($key)] = urldecode($value);
+  }
+
+  // Log the response if specified.
+  if ($payment_method['settings']['log']['response'] == 'response') {
+    watchdog('commerce_paypal', 'PayPal server response: !param', array('!param' => '<pre>' . check_plain(print_r($response, TRUE)) . '</pre>', WATCHDOG_DEBUG));
+  }
+
+  return $response;
+}
+
+/**
+ * Returns the URL to the specified PayPal API server.
+ *
+ * @param $server
+ *   Either sandbox or live indicating which server to get the URL for.
+ *
+ * @return
+ *   The URL to use to submit requests to the PayPal API server.
+ */
+function commerce_paypal_api_server_url($server) {
+  switch ($server) {
+    case 'sandbox':
+      return 'https://api-3t.sandbox.paypal.com/nvp';
+    case 'live':
+      return 'https://api-3t.paypal.com/nvp';
+  }
+}
+
+/**
+ * Returns the relevant PayPal payment action for a given transaction type.
+ *
+ * @param $txn_type
+ *   The type of transaction whose payment action should be returned; currently
+ *   supports COMMERCE_CREDIT_AUTH_CAPTURE and COMMERCE_CREDIT_AUTH_ONLY.
+ */
+function commerce_paypal_payment_action($txn_type) {
+  switch ($txn_type) {
+    case COMMERCE_CREDIT_AUTH_ONLY:
+      return 'Authorization';
+    case COMMERCE_CREDIT_AUTH_CAPTURE:
+      return 'Sale';
+  }
+}
+
+/**
+ * Returns the description of a transaction type for a PayPal payment action.
+ */
+function commerce_paypal_reverse_payment_action($payment_action) {
+  switch (strtoupper($payment_action)) {
+    case 'AUTHORIZATION':
+      return t('Authorization only');
+    case 'SALE':
+      return t('Authorization and capture');
+  }
+}
+
+/**
  * Returns an appropriate message given an AVS code.
  */
 function commerce_paypal_avs_code_message($code) {

@@ -59,3 +59,23 @@
 function hook_commerce_paypal_ipn_process($order, $payment_method, $ipn) {
   // No example.
 }
+
+/**
+ * Allows modules to alter the name-value pair array for a PayPal API request
+ * before it is submitted.
+ *
+ * Currently invoked for PayPal Payments Pro and Express Checkout. Modules
+ * implementing this hook may determine which payment method the API request is
+ * for by examining the $payment_method array passed as the last parameter.
+ *
+ * @param &$nvp
+ *   The name-value pair array for the API request.
+ * @param $order
+ *   If available, the full order object the payment request is being submitted
+ *   for; otherwise NULL.
+ * @param $payment_method
+ *   The payment method instance array associated with this API request.
+ */
+function hook_commerce_paypal_api_request_alter(&$nvp, $order, $payment_method) {
+  // No example.
+}
