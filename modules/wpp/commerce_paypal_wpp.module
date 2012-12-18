@@ -85,7 +85,7 @@ function commerce_paypal_wpp_default_settings() {
     'server' => 'sandbox',
     'code' => TRUE,
     'card_types' => drupal_map_assoc(array('visa', 'mastercard', 'amex', 'discover')),
-    'currency_code' => in_array($default_currency, array_keys(commerce_paypal_wpp_currencies())) ? $default_currency : 'USD',
+    'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('paypal_wpp'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
     'txn_type' => COMMERCE_CREDIT_AUTH_CAPTURE,
     'log' => array('request' => 0, 'response' => 0),
@@ -144,7 +144,7 @@ function commerce_paypal_wpp_settings_form($settings = array()) {
     '#type' => 'select',
     '#title' => t('Default currency'),
     '#description' => t('Transactions in other currencies will be converted to this currency, so multi-currency sites must be configured to use appropriate conversion rates.'),
-    '#options' => commerce_paypal_wpp_currencies(),
+    '#options' => commerce_paypal_currencies('paypal_wpp'),
     '#default_value' => $settings['currency_code'],
   );
   $form['allow_supported_currencies'] = array(
@@ -256,7 +256,7 @@ function commerce_paypal_wpp_submit_form_submit($payment_method, $pane_form, $pa
   // charge if it's supported by PayPal if that option is enabled.
   $currency_code = $payment_method['settings']['currency_code'];
 
-  if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($charge['currency_code'], array_keys(commerce_paypal_wpp_currencies()))) {
+  if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($charge['currency_code'], array_keys(commerce_paypal_currencies('paypal_wpp')))) {
     $currency_code = $charge['currency_code'];
   }
 
@@ -470,11 +470,4 @@ function commerce_paypal_wpp_card_type($card_type) {
     case 'solo':
       return 'Solo';
   }
-}
-
-/**
- * Returns an array of all possible Direct Payment currency codes.
- */
-function commerce_paypal_wpp_currencies() {
-  return drupal_map_assoc(array('AUD', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'JPY', 'NOK', 'NZD', 'PLN', 'SEK', 'SGD', 'USD'));
 }

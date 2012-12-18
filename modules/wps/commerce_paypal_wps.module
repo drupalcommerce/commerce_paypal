@@ -38,7 +38,7 @@ function commerce_paypal_wps_default_settings() {
 
   return array(
     'business' => '',
-    'currency_code' => in_array($default_currency, array_keys(commerce_paypal_wps_currencies())) ? $default_currency : 'USD',
+    'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('paypal_wps'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
     'language' => 'US',
     'server' => 'sandbox',
@@ -69,7 +69,7 @@ function commerce_paypal_wps_settings_form($settings = array()) {
     '#type' => 'select',
     '#title' => t('Default currency'),
     '#description' => t('Transactions in other currencies will be converted to this currency, so multi-currency sites must be configured to use appropriate conversion rates.'),
-    '#options' => commerce_paypal_wps_currencies(),
+    '#options' => commerce_paypal_currencies('paypal_wps'),
     '#default_value' => $settings['currency_code'],
   );
   $form['allow_supported_currencies'] = array(
@@ -372,7 +372,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
   $currency_code = $settings['currency_code'];
   $order_currency_code = $wrapper->commerce_order_total->currency_code->value();
 
-  if (!empty($settings['allow_supported_currencies']) && in_array($order_currency_code, array_keys(commerce_paypal_wps_currencies()))) {
+  if (!empty($settings['allow_supported_currencies']) && in_array($order_currency_code, array_keys(commerce_paypal_currencies('paypal_wps')))) {
     $currency_code = $order_currency_code;
   }
 
@@ -507,11 +507,4 @@ function commerce_paypal_wps_languages() {
       'zh_TW' => t('Traditional Chinese (for Taiwan only)'),
     ),
   );
-}
-
-/**
- * Returns an array of all possible currency codes.
- */
-function commerce_paypal_wps_currencies() {
-  return drupal_map_assoc(array('AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD'));
 }
