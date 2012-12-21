@@ -1,0 +1,16 @@
+.paypal-ec-order-form {
+  text-align: right;
+}
+
+#edit-paypal-ec {
+	background: none;
+	border: none;
+	margin: 0 .5em 0 0;
+  padding: 0;
+}
+
+.commerce-paypal-ec-icon {
+  position: relative;
+  top: 9px;
+  width: 38px;
+}
