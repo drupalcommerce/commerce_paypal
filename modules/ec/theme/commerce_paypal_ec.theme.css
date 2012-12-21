@@ -9,8 +9,11 @@
   padding: 0;
 }
 
+.commerce-paypal-ec-icon-wrapper {
+  line-height: 3em;
+}
+
 .commerce-paypal-ec-icon {
   position: relative;
-  top: 9px;
-  width: 38px;
+  top: 15px;
 }

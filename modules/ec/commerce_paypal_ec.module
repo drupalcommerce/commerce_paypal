@@ -199,7 +199,6 @@ function commerce_paypal_ec_form_alter(&$form, &$form_state, $form_id) {
     $paypal_ec = FALSE;
 
     foreach ($form['commerce_payment']['payment_method']['#options'] as $key => &$value) {
-      watchdog('debug', $key);
       list($method_id, $rule_name) = explode('|', $key);
 
       // If we find PayPal EC, include its CSS on the form and exit the loop.
@@ -863,16 +862,25 @@ function commerce_paypal_ec_button_url() {
 }
 
 /**
- * Returns the URL to a PayPal mark.
+ * Returns the URL to a remote PayPal mark.
+ *
+ * @todo Determine if we shouldn't actually be using a remote URL like
+ * https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_37x23.jpg.
+ * The logo there isn't actually 37x23 pixels and doesn't look like any other
+ * PayPal logo.
+ *
+ * @see https://www.paypal.com/webapps/mpp/logo-center
  */
 function commerce_paypal_ec_mark_url() {
-  return 'https://www.paypalobjects.com/webstatic/mktg/logo/pp_cc_mark_37x23.jpg';
+  return url(drupal_get_path('module', 'commerce_paypal_ec') . '/images/paypal-ec-logo.gif', array('absolute' => TRUE));
 }
 
 /**
  * Returns a themed PayPal mark image.
+ *
+ * @todo Make this an actual theme function.
  */
-function commerce_paypal_ec_mark_image() {
+function commerce_paypal_ec_mark_image($remote = FALSE) {
   $variables = array(
     'path' => commerce_paypal_ec_mark_url(),
     'title' => t('Pay with PayPal'),
@@ -882,5 +890,5 @@ function commerce_paypal_ec_mark_image() {
     ),
   );
 
-  return theme('image', $variables);
+  return '<span class="commerce-paypal-ec-icon-wrapper">' . theme('image', $variables) . '</span>';
 }
