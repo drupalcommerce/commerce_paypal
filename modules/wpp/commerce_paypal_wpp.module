@@ -76,7 +76,7 @@ function commerce_paypal_wpp_commerce_payment_method_info() {
  * Returns the default settings for the PayPal WPP payment method.
  */
 function commerce_paypal_wpp_default_settings() {
-  $default_currency = variable_get('commerce_default_currency', 'USD');
+  $default_currency = commerce_default_currency();
 
   return array(
     'api_username' => '',

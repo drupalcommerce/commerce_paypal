@@ -34,7 +34,7 @@ function commerce_paypal_wps_commerce_payment_method_info() {
  * Returns the default settings for the PayPal WPS payment method.
  */
 function commerce_paypal_wps_default_settings() {
-  $default_currency = variable_get('commerce_default_currency', 'USD');
+  $default_currency = commerce_default_currency();
 
   return array(
     'business' => '',
@@ -127,8 +127,8 @@ function commerce_paypal_wps_settings_form($settings = array()) {
 }
 
 /**
- * Payment method callback: adds a message and CSS to the submission form if
- * enabled in the payment method settings.
+ * Payment method callback: adds a message to the submission form if enabled in
+ * the payment method settings.
  */
 function commerce_paypal_wps_submit_form($payment_method, $pane_values, $checkout_pane, $order) {
   $form = array();
