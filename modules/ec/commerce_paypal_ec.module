@@ -451,6 +451,10 @@ function commerce_paypal_ec_redirect_form_submit(&$order, $payment_method) {
     commerce_paypal_ec_customer_profile($order, 'shipping', $response, 'PAYMENTREQUEST_0_');
   }
 
+  // @todo Now that we've updated the billing and shipping customer profiles, we
+  // should recalculate the price of products on the order in case taxes have
+  // changed or prices have otherwise been affected.
+
   // Save the changes to the order.
   commerce_order_save($order);
 }
