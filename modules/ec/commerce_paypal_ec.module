@@ -412,19 +412,11 @@ function commerce_paypal_ec_redirect_form_validate($order, $payment_method) {
     return FALSE;
   }
 
+  // Don't attempt to verify the Express Checkout details without a valid token.
   if (empty($order->data['commerce_paypal_ec']['token'])) {
     return FALSE;
   }
-}
 
-/**
- * Payment method callback: redirect form return submission.
- *
- * @todo If the customer completed payment using the Mark flow, then we should
- * process payment at the end of this function; otherwise no transaction will
- * actually ever be created.
- */
-function commerce_paypal_ec_redirect_form_submit(&$order, $payment_method) {
   // Build a name-value pair array to obtain buyer information from PayPal.
   $nvp = array(
     'METHOD' => 'GetExpressCheckoutDetails',
@@ -433,6 +425,11 @@ function commerce_paypal_ec_redirect_form_submit(&$order, $payment_method) {
 
   // Submit the API request to PayPal.
   $response = commerce_paypal_api_request($payment_method, $nvp, $order);
+
+  // If the request failed, exit now with a failure message.
+  if ($response['ACK'] == 'Failure') {
+    return FALSE;
+  }
 
   // Set the Payer ID used to finalize payment.
   $order->data['commerce_paypal_ec']['payerid'] = $response['PAYERID'];
@@ -457,6 +454,27 @@ function commerce_paypal_ec_redirect_form_submit(&$order, $payment_method) {
 
   // Save the changes to the order.
   commerce_order_save($order);
+
+  // If the customer completed payment using the Mark flow, then we should
+  // attempt to process payment now and go back if it fails.
+  if ($order->data['commerce_paypal_ec']['flow'] == 'mark') {
+    $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+    $charge = $order_wrapper->commerce_order_total->value();
+
+    // Attempt to process the payment.
+    if (!commerce_paypal_ec_do_payment($payment_method, $order, $charge)) {
+      return FALSE;
+    }
+  }
+}
+
+/**
+ * Payment method callback: redirect form return submission.
+ */
+function commerce_paypal_ec_redirect_form_submit(&$order, $payment_method) {
+  // Because we need to be able to halt checkout completion if payment fails for
+  // some reason, instead of getting and processing Express Checkout payment
+  // details in the submission step, we do this in the validate step above.
 }
 
 /**
@@ -593,8 +611,8 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
   );
 
   foreach ($key_map as $key => $response_key) {
-    if (!empty($response[$key])) {
-      $transaction->{$key}= $response[$response_key];
+    if (!empty($response[$response_key])) {
+      $transaction->{$key} = $response[$response_key];
     }
   }
 
@@ -656,7 +674,6 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
   // If the payment failed, display an error and rebuild the form.
   if (!in_array($response['PAYMENTINFO_0_PAYMENTSTATUS'], array('Refunded', 'Completed', 'Pending'))) {
     drupal_set_message(t('We encountered an error processing your payment with PayPal. Please try again or contact us for assistance.'), 'error');
-
     return FALSE;
   }
 
@@ -702,6 +719,13 @@ function commerce_paypal_ec_customer_profile($order, $profile_type, $response, $
   if (empty($profile)) {
     $profile = commerce_customer_profile_new($profile_type, $order->uid);
   }
+
+  // Add the order context to the profile to ensure it can be updated without
+  // resulting in customer profile duplication.
+  $profile->entity_context = array(
+    'entity_type' => 'commerce_order',
+    'entity_id' => $order->order_id,
+  );
 
   // Prepare an addressfield array to set to the customer profile.
   $address = addressfield_default_values();
