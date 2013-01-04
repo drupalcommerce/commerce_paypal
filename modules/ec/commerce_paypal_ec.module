@@ -256,8 +256,6 @@ function commerce_paypal_ec_order_form_validate($form, &$form_state) {
 
 /**
  * Submit handler: redirect to PayPal Express Checkout.
- *
- * @todo Abstract the API request building out of this function.
  */
 function commerce_paypal_ec_order_form_submit($form, &$form_state) {
   // Update the order to reference the PayPal Express Checkout payment method.
@@ -268,98 +266,32 @@ function commerce_paypal_ec_order_form_submit($form, &$form_state) {
   // Generate a payment redirect key.
   $order->data['payment_redirect_key'] = drupal_hash_base64(time());
 
-  // Extract the order total value array.
-  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
-  $order_total = $order_wrapper->commerce_order_total->value();
+  // Request a token from Express Checkout.
+  $token = commerce_paypal_ec_set_express_checkout($payment_method, $order);
 
-  // Determine the amount of tax collected on the order.
-  $tax = 0;
-
-  foreach ($order_total['data']['components'] as $component) {
-    if (substr($component['name'], 0, 3) == 'tax') {
-      // @todo Calculate the actual amount of tax on the order.
-    }
-  }
-
-  // Build a name-value pair array for this transaction.
-  $nvp = array(
-    'METHOD' => 'SetExpressCheckout',
-    'PAYMENTREQUEST_0_AMT' => commerce_currency_amount_to_decimal($order_total['amount'], $order_total['currency_code']),
-    'PAYMENTREQUEST_0_CURRENCYCODE' => $order_total['currency_code'],
-    'PAYMENTREQUEST_0_TAXAMT' => commerce_currency_amount_to_decimal($tax, $order_total['currency_code']),
-    'PAYMENTREQUEST_0_INVNUM' => $order->order_id,
-    'PAYMENTREQUEST_0_PAYMENTACTION' => commerce_paypal_payment_action($payment_method['settings']['txn_type']),
-    'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
-    'CANCELURL' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
-  );
-
-  // Add itemized information to the API request.
-  $i = 0;
-
-  foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
-    // Extract the line item total value array.
-    $unit_price = $line_item_wrapper->commerce_unit_price->value();
-
-    // Determine the amount of tax included in this line item.
-    $item_tax = 0;
-
-    foreach ($unit_price['data']['components'] as $component) {
-      if (substr($component['name'], 0, 3) == 'tax') {
-        // @todo Calculate the actual amount of tax on the line item.
-      }
-    }
-
-    $nvp += array(
-      'L_PAYMENTREQUEST_0_NAME' . $i => commerce_line_item_title($line_item_wrapper->value()),
-      'L_PAYMENTREQUEST_0_AMT' . $i => commerce_currency_amount_to_decimal($unit_price['amount'], $unit_price['currency_code']),
-      'L_PAYMENTREQUEST_0_TAXAMT' . $i => commerce_currency_amount_to_decimal($item_tax, $unit_price['currency_code']),
-      'L_PAYMENTREQUEST_0_QTY' . $i => round($line_item_wrapper->quantity->value()),
+  // If we got one back...
+  if (!empty($token)) {
+    // Set the Express Checkout data array.
+    $order->data['commerce_paypal_ec'] = array(
+      'flow' => 'ec',
+      'token' => $token,
+      'payerid' => FALSE,
     );
 
-    $i++;
-  }
-
-  // Submit the SetExpressCheckout API request to PayPal.
-  $response = commerce_paypal_api_request($payment_method, $nvp, $order);
-
-  // Attempt to extract the redirect token from the API response.
-  $order->data['commerce_paypal_ec'] = array(
-    'flow' => 'ec',
-    'token' => FALSE,
-    'payerid' => FALSE,
-  );
-
-  switch ($response['ACK']) {
-    case 'SuccessWithWarning':
-    case 'Success':
-      $order->data['commerce_paypal_ec']['token'] = $response['TOKEN'];
-      break;
-
-    case 'FailureWithWarning':
-    case 'Failure':
-    default:
-  }
-
-  // If we didn't get a valid redirect token...
-  if (empty($order->data['commerce_paypal_ec']['token'])) {
-    // Clear the payment related information from the data array.
-    unset($order->data['payment_method']);
-    unset($order->data['commerce_paypal_ec']);
-
-    // Show an error message and remain on the cart page.
-    drupal_set_message(t('Redirect to PayPal Express Checkout failed. Please try again or contact an administrator to resolve the issue.'), 'error');
-    $form_state['redirect'] = 'cart';
-  }
-  else {
-    // Otherwise go ahead and set the redirect to PayPal.
+    // Set the redirect to PayPal.
     $form_state['redirect'] = commerce_paypal_ec_checkout_url($payment_method['settings']['server'], $order->data['commerce_paypal_ec']['token']);
 
     // Update the order status to the payment redirect page.
-    commerce_order_status_update($order, 'checkout_payment', TRUE);
-  }
+    commerce_order_status_update($order, 'checkout_payment', FALSE, NULL, t('Customer clicked the Express Checkout button on the cart page.'));
 
-  // Save the changes to the order data array.
-  commerce_order_save($order);
+    // Save the changes to the order data array.
+    commerce_order_save($order);
+  }
+  else {
+    // Otherwise show an error message and remain on the cart page.
+    drupal_set_message(t('Redirect to PayPal Express Checkout failed. Please try again or contact an administrator to resolve the issue.'), 'error');
+    $form_state['redirect'] = 'cart';
+  }
 }
 
 /**
@@ -395,8 +327,6 @@ function commerce_paypal_ec_submit_form_validate($payment_method, $pane_form, $p
 
 /**
  * Payment method callback: submit form submission.
- *
- * @todo Abstract the API request building out of this function.
  */
 function commerce_paypal_ec_submit_form_submit($payment_method, $pane_form, $pane_values, $order, $charge) {
   // Update the order to reference the PayPal Express Checkout payment method.
@@ -405,6 +335,143 @@ function commerce_paypal_ec_submit_form_submit($payment_method, $pane_form, $pan
   // Generate a payment redirect key.
   $order->data['payment_redirect_key'] = drupal_hash_base64(time());
 
+  // Request a token from Express Checkout.
+  $token = commerce_paypal_ec_set_express_checkout($payment_method, $order);
+
+  // If we got one back...
+  if (!empty($token)) {
+    // Set the Express Checkout data array and proceed to the redirect page.
+    $order->data['commerce_paypal_ec'] = array(
+      'flow' => 'mark',
+      'token' => $token,
+      'payerid' => FALSE,
+    );
+
+    return TRUE;
+  }
+  else {
+    // Otherwise show an error message and remain on the current page.
+    drupal_set_message(t('Communication with PayPal Express Checkout failed. Please try again or contact an administrator to resolve the issue.'), 'error');
+    return FALSE;
+  }
+}
+
+/**
+ * Payment method callback: redirect form.
+ */
+function commerce_paypal_ec_redirect_form($form, &$form_state, $order, $payment_method) {
+  // If we didn't get a valid redirect token...
+  if (empty($order->data['commerce_paypal_ec']['token'])) {
+    // Clear the payment related information from the data array.
+    unset($order->data['payment_method']);
+    unset($order->data['commerce_paypal_ec']);
+
+    // Show an error message and go back a page.
+    drupal_set_message(t('Redirect to PayPal Express Checkout failed. Please try again or contact an administrator to resolve the issue.'), 'error');
+    commerce_payment_redirect_pane_previous_page($order, t('Redirect to PayPal Express Checkout failed.'));
+  }
+  elseif (!in_array(arg(3), array('back', 'return'))) {
+    // Otherwise go ahead and set the redirect to PayPal.
+    drupal_goto(commerce_paypal_ec_checkout_url($payment_method['settings']['server'], $order->data['commerce_paypal_ec']['token']));
+  }
+}
+
+/**
+ * Payment method callback: redirect form back callback.
+ */
+function commerce_paypal_ec_redirect_form_back(&$order, $payment_method) {
+  // Display a message indicating the customer initiatied cancellation.
+  drupal_set_message(t('You have canceled checkout at PayPal but may resume the checkout process here when you are ready.'));
+
+  // Remove the payment information from the order data array.
+  $flow = $order->data['commerce_paypal_ec']['flow'];
+  unset($order->data['commerce_paypal_ec']);
+  unset($order->data['payment_method']);
+
+  // If the customer initially redirected to PayPal from the cart form...
+  if ($flow == 'ec') {
+    // Send them back to the shopping cart page instead of the previous page in
+    // the checkout process.
+    commerce_order_status_update($order, 'cart', FALSE, NULL, t('Customer canceled Express Checkout at PayPal.'));
+    drupal_goto('cart');
+  }
+}
+
+/**
+ * Payment method callback: redirect form return validation.
+ */
+function commerce_paypal_ec_redirect_form_validate($order, $payment_method) {
+  if (!empty($payment_method['settings']['ipn_logging']) &&
+    $payment_method['settings']['ipn_logging'] == 'full_ipn') {
+    watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
+  }
+
+  // This may be an unnecessary step, but if for some reason the user does end
+  // up returning at the success URL with a Failed payment, go back.
+  if (!empty($_POST['payment_status']) && $_POST['payment_status'] == 'Failed') {
+    return FALSE;
+  }
+
+  if (empty($order->data['commerce_paypal_ec']['token'])) {
+    return FALSE;
+  }
+}
+
+/**
+ * Payment method callback: redirect form return submission.
+ *
+ * @todo If the customer completed payment using the Mark flow, then we should
+ * process payment at the end of this function; otherwise no transaction will
+ * actually ever be created.
+ */
+function commerce_paypal_ec_redirect_form_submit(&$order, $payment_method) {
+  // Build a name-value pair array to obtain buyer information from PayPal.
+  $nvp = array(
+    'METHOD' => 'GetExpressCheckoutDetails',
+    'TOKEN' => $order->data['commerce_paypal_ec']['token'],
+  );
+
+  // Submit the API request to PayPal.
+  $response = commerce_paypal_api_request($payment_method, $nvp, $order);
+
+  // Set the Payer ID used to finalize payment.
+  $order->data['commerce_paypal_ec']['payerid'] = $response['PAYERID'];
+
+  // If the user is anonymous, add their PayPal e-mail to the order.
+  if (empty($order->mail)) {
+    $order->mail = $response['EMAIL'];
+  }
+
+  // Create a billing information profile for the order with the available info.
+  commerce_paypal_ec_customer_profile($order, 'billing', $response, 'PAYMENTREQUEST_0_');
+
+  // If the shipping module exists on the site, create a shipping information
+  // profile for the order with the available info.
+  if (module_exists('commerce_shipping')) {
+    commerce_paypal_ec_customer_profile($order, 'shipping', $response, 'PAYMENTREQUEST_0_');
+  }
+
+  // Save the changes to the order.
+  commerce_order_save($order);
+}
+
+/**
+ * Submits a SetExpressCheckout request to PayPal for the given order.
+ *
+ * This function does not make any changes to the given order, so storage of the
+ * token in the order's data array must happen separately. Additionally, the
+ * $order must already have a payment_redirect_key in its data array for the
+ * proper creation of return and cancel URLs in the API request.
+ *
+ * @param $payment_method
+ *   The payment method instance array containing the Express Checkout settings.
+ * @param $order
+ *   The order to set Express Checkout for.
+ *
+ * @return
+ *   The Express Checkout token if successful or FALSE if not.
+ */
+function commerce_paypal_ec_set_express_checkout($payment_method, $order) {
   // Extract the order total value array.
   $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $order_total = $order_wrapper->commerce_order_total->value();
@@ -459,127 +526,13 @@ function commerce_paypal_ec_submit_form_submit($payment_method, $pane_form, $pan
   // Submit the SetExpressCheckout API request to PayPal.
   $response = commerce_paypal_api_request($payment_method, $nvp, $order);
 
-  // Attempt to extract the redirect token from the API response.
-  $order->data['commerce_paypal_ec'] = array(
-    'flow' => 'mark',
-    'token' => FALSE,
-    'payerid' => FALSE,
-  );
-
-  switch ($response['ACK']) {
-    case 'SuccessWithWarning':
-    case 'Success':
-      $order->data['commerce_paypal_ec']['token'] = $response['TOKEN'];
-      break;
-
-    case 'FailureWithWarning':
-    case 'Failure':
-    default:
+  // If the request is successful, return the token.
+  if (in_array($response['ACK'], array('SuccessWithWarning', 'Success'))) {
+    return $response['TOKEN'];
   }
 
-  // If we didn't get a valid redirect token...
-  if (empty($order->data['commerce_paypal_ec']['token'])) {
-    // Clear the payment related information from the data array.
-    unset($order->data['payment_method']);
-    unset($order->data['commerce_paypal_ec']);
-
-    // Show an error message and remain on the current page.
-    drupal_set_message(t('Communication with PayPal Express Checkout failed. Please try again or contact an administrator to resolve the issue.'), 'error');
-    return FALSE;
-  }
-
-  return TRUE;
-}
-
-/**
- * Payment method callback: redirect form.
- */
-function commerce_paypal_ec_redirect_form($form, &$form_state, $order, $payment_method) {
-  // If we didn't get a valid redirect token...
-  if (empty($order->data['commerce_paypal_ec']['token'])) {
-    // Clear the payment related information from the data array.
-    unset($order->data['payment_method']);
-    unset($order->data['commerce_paypal_ec']);
-
-    // Show an error message and go back a page.
-    drupal_set_message(t('Redirect to PayPal Express Checkout failed. Please try again or contact an administrator to resolve the issue.'), 'error');
-    commerce_payment_redirect_pane_previous_page($order, t('Redirect to PayPal Express Checkout failed.'));
-  }
-  else {
-    // Otherwise go ahead and set the redirect to PayPal.
-    drupal_goto(commerce_paypal_ec_checkout_url($payment_method['settings']['server'], $order->data['commerce_paypal_ec']['token']));
-  }
-}
-
-/**
- * Payment method callback: redirect form back callback.
- */
-function commerce_paypal_ec_redirect_form_back(&$order, $payment_method) {
-  // Remove the payment information from the order data array.
-  unset($order->data['payment_method']);
-  unset($order->data['commerce_paypal_ec']);
-
-  // @todo Change this to redirect to whatever the first checkout page is.
-  commerce_order_status_update($order, 'checkout_checkout');
-
-  commerce_order_save($order);
-
-  // Display a message indicating the customer initiatied cancellation.
-  drupal_set_message(t('You have canceled checkout with PayPal, but you may still complete your order through our on-site checkout form.'));
-}
-
-/**
- * Payment method callback: redirect form return validation.
- */
-function commerce_paypal_ec_redirect_form_validate($order, $payment_method) {
-  if (!empty($payment_method['settings']['ipn_logging']) &&
-    $payment_method['settings']['ipn_logging'] == 'full_ipn') {
-    watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
-  }
-
-  // This may be an unnecessary step, but if for some reason the user does end
-  // up returning at the success URL with a Failed payment, go back.
-  if (!empty($_POST['payment_status']) && $_POST['payment_status'] == 'Failed') {
-    return FALSE;
-  }
-
-  if (empty($order->data['commerce_paypal_ec']['token'])) {
-    return FALSE;
-  }
-}
-
-/**
- * Payment method callback: redirect form return submission.
- */
-function commerce_paypal_ec_redirect_form_submit(&$order, $payment_method) {
-  // Build a name-value pair array to obtain buyer information from PayPal.
-  $nvp = array(
-    'METHOD' => 'GetExpressCheckoutDetails',
-    'TOKEN' => $order->data['commerce_paypal_ec']['token'],
-  );
-
-  // Submit the API request to PayPal.
-  $response = commerce_paypal_api_request($payment_method, $nvp, $order);
-
-  // Set the Payer ID used to finalize payment.
-  $order->data['commerce_paypal_ec']['payerid'] = $response['PAYERID'];
-
-  // If the user is anonymous, add their PayPal e-mail to the order.
-  if (empty($order->mail)) {
-    $order->mail = $response['EMAIL'];
-  }
-
-  // Create a billing information profile for the order with the available info.
-  commerce_paypal_ec_customer_profile($order, 'billing', $response, 'PAYMENTREQUEST_0_');
-
-  // If the shipping module exists on the site, create a shipping information
-  // profile for the order with the available info.
-  if (module_exists('commerce_shipping')) {
-    commerce_paypal_ec_customer_profile($order, 'shipping', $response, 'PAYMENTREQUEST_0_');
-  }
-
-  // Save the changes to the order.
-  commerce_order_save($order);
+  // Otherwise indicate failure by returning FALSE.
+  return FALSE;
 }
 
 /**

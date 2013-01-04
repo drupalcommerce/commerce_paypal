@@ -9,6 +9,12 @@
 /**
  * Checkout pane callback: returns a pane allowing the customer to review the
  * final details of the order and provide any final information required.
+ *
+ * @todo Provide a setting for this checkout pane that lets you specify what
+ * checkout panes should be embedded in it. For example, this could let the
+ * customer select a shipping service after returning to the site from PayPal.
+ * This information should be included beneath the review information for
+ * customer selection.
  */
 function commerce_paypal_ec_review_pane_checkout_form($form, &$form_state, $checkout_pane, $order) {
   $pane_form = array();
@@ -59,7 +65,7 @@ function commerce_paypal_ec_review_pane_checkout_form($form, &$form_state, $chec
  * Form callback: validates information entered on the EC review page.
  */
 function commerce_paypal_ec_review_validate($form, &$form_state) {
-
+  // @todo Validate and submit any checkout panes included in this page.
 }
 
 /**
