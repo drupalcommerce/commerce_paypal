@@ -510,11 +510,18 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order) {
   // Build a name-value pair array for this transaction.
   $nvp = array(
     'METHOD' => 'SetExpressCheckout',
+
+    // Disable entering notes in PayPal, as we don't have any way to accommodate
+    // them right now.
+    'ALLOWNOTE' => '0',
+
     'PAYMENTREQUEST_0_AMT' => commerce_currency_amount_to_decimal($order_total['amount'], $order_total['currency_code']),
     'PAYMENTREQUEST_0_CURRENCYCODE' => $order_total['currency_code'],
     'PAYMENTREQUEST_0_TAXAMT' => commerce_currency_amount_to_decimal($tax, $order_total['currency_code']),
-    'PAYMENTREQUEST_0_INVNUM' => $order->order_id,
+    'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
     'PAYMENTREQUEST_0_PAYMENTACTION' => commerce_paypal_payment_action($payment_method['settings']['txn_type']),
+
+    // Set the return and cancel URLs.
     'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
     'CANCELURL' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
   );
@@ -589,8 +596,12 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
     'METHOD' => 'DoExpressCheckoutPayment',
     'TOKEN' => $order->data['commerce_paypal_ec']['token'],
     'PAYERID' => $order->data['commerce_paypal_ec']['payerid'],
+    'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
     'PAYMENTREQUEST_0_AMT' => commerce_currency_amount_to_decimal($amount, $currency_code),
     'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_code,
+
+    // @todo Ensure this is the same payment action requested in the
+    // SetExpressCheckout request.
     'PAYMENTREQUEST_0_PAYMENTACTION' => commerce_paypal_payment_action($payment_method['settings']['txn_type']),
   );
 
