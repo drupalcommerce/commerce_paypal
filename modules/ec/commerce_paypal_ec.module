@@ -98,6 +98,7 @@ function commerce_paypal_ec_default_settings() {
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('paypal_ec'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
     'txn_type' => COMMERCE_CREDIT_AUTH_CAPTURE,
+    'ec_mode' => 'Mark',
     'log' => array('request' => 0, 'response' => 0),
     'show_payment_instructions' => FALSE,
   );
@@ -158,6 +159,17 @@ function commerce_paypal_ec_settings_form($settings = array()) {
       COMMERCE_CREDIT_AUTH_ONLY => t('Authorization only (requires manual or automated capture after checkout)'),
     ),
     '#default_value' => $settings['txn_type'],
+  );
+  $form['ec_mode'] = array(
+    '#type' => 'radios',
+    '#title' => t('Express Checkout mode'),
+    '#description' => t('Express Checkout Account Optional (ECAO) where PayPal accounts are not required for payment may not be available in all markets.'),
+    '#options' => array(
+      'Mark' => t('Require a PayPal account (this is the standard configuration)'),
+      'SoleLogin' => t('Do not require a PayPal account but default to the PayPal login form'),
+      'SoleBilling' => t('Do not require a PayPal account and default to the billing form'),
+    ),
+    '#default_value' => $settings['ec_mode'],
   );
   $form['log'] = array(
     '#type' => 'checkboxes',
@@ -511,6 +523,10 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order) {
   $nvp = array(
     'METHOD' => 'SetExpressCheckout',
 
+    // Default the Express Checkout landing page to the Mark solution.
+    'SOLUTIONTYPE' => 'Mark',
+    'LANDINGPAGE' => 'Login',
+
     // Disable entering notes in PayPal, as we don't have any way to accommodate
     // them right now.
     'ALLOWNOTE' => '0',
@@ -525,6 +541,16 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order) {
     'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
     'CANCELURL' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
   );
+
+  // If Express Checkout Account Optional is enabled...
+  if ($payment_method['settings']['ec_mode'] != 'Mark') {
+    // Update the solution type and landing page parameters accordingly.
+    $nvp['SOLUTIONTYPE'] = 'Sole';
+
+    if ($payment_method['settings']['ec_mode'] == 'SoleBilling') {
+      $nvp['LANDINGPAGE'] = 'Billing';
+    }
+  }
 
   // Add itemized information to the API request.
   $i = 0;
