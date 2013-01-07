@@ -570,6 +570,7 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order) {
 
     $nvp += array(
       'L_PAYMENTREQUEST_0_NAME' . $i => commerce_line_item_title($line_item_wrapper->value()),
+      'L_PAYMENTREQUEST_0_NUMBER' . $i => $line_item_wrapper->line_item_label->value(),
       'L_PAYMENTREQUEST_0_AMT' . $i => commerce_currency_amount_to_decimal($unit_price['amount'], $unit_price['currency_code']),
       'L_PAYMENTREQUEST_0_TAXAMT' . $i => commerce_currency_amount_to_decimal($item_tax, $unit_price['currency_code']),
       'L_PAYMENTREQUEST_0_QTY' . $i => round($line_item_wrapper->quantity->value()),
