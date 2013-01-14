@@ -436,6 +436,7 @@ function commerce_paypal_currencies($method_id) {
   switch ($method_id) {
     case 'paypal_wpp':
     case 'paypal_ec':
+    case 'payflow_link':
       return drupal_map_assoc(array('AUD', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'JPY', 'NOK', 'NZD', 'PLN', 'SEK', 'SGD', 'USD'));
     case 'paypal_wps':
       return drupal_map_assoc(array('AUD', 'BRL', 'CAD', 'CHF', 'CZK', 'DKK', 'EUR', 'GBP', 'HKD', 'HUF', 'ILS', 'JPY', 'MXN', 'MYR', 'NOK', 'NZD', 'PHP', 'PLN', 'SEK', 'SGD', 'THB', 'TRY', 'TWD', 'USD'));
@@ -521,6 +522,7 @@ function commerce_paypal_cvv_match_message($code) {
 
   switch ($code) {
     case 'M':
+    case 'Y':
       return t('Match');
     case 'N':
       return t('No match');
