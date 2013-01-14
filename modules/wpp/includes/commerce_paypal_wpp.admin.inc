@@ -182,7 +182,7 @@ function commerce_paypal_wpp_capture_form_submit($form, &$form_state) {
         // Display an error message but leave the transaction pending.
         drupal_set_message(t('Prior authorization capture failed, so the transaction will remain in a pending status.'), 'error');
         drupal_set_message(check_plain($response['L_LONGMESSAGE0']), 'error');
-        $transaction->payload[REQUEST_TIME . '-capture'] = $response;
+        break;
     }
   }
 
