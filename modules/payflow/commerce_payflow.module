@@ -368,10 +368,15 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   // Determine the currency code used to actually process the transaction,
   // which will either be the default currency code or the currency code of the
   // charge if it's supported by PayPal if that option is enabled.
-  $currency_code = $payment_method['settings']['currency_code'];
+  if (!empty($_POST['CURRENCY'])) {
+    $currency_code = $_POST['CURRENCY'];
+  }
+  else {
+    $currency_code = $payment_method['settings']['currency_code'];
 
-  if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies('payflow_link')))) {
-    $currency_code = $order_total['currency_code'];
+    if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies('payflow_link')))) {
+      $currency_code = $order_total['currency_code'];
+    }
   }
 
   // Convert the order total to the currency specified by the settings.
@@ -385,15 +390,27 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   $transaction->payload[REQUEST_TIME] = $_POST;
   $transaction->remote_id = $_POST['PNREF'];
 
+  // Determine the type of transaction.
+  if (!empty($_POST['TRXTYPE'])) {
+    $trxtype = $_POST['TRXTYPE'];
+  }
+  elseif (!empty($_POST['TYPE'])) {
+    $trxtype = $_POST['TYPE'];
+  }
+  else {
+    $trxtype = $payment_method['settings']['trxtype'];
+  }
+
+  $trxtype_name = commerce_payflow_trxtype_name($trxtype);
+
   // Build a meaningful response message.
   $message = array();
-  $trxtype_name = commerce_payflow_trxtype_name($_POST['TYPE']);
 
   // Set the transaction status and message based on the acknowledgment code.
   switch (intval($_POST['RESULT'])) {
     case 0:
       // Set the transaction status based on the type of transaction this was.
-      switch ($_POST['TYPE']) {
+      switch ($trxtype) {
         case 'S':
           $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
           break;
@@ -406,9 +423,38 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
 
       $message[] = '<b>' . t('@action - Success', array('@action' => $trxtype_name)) . '</b>';
 
+      // Add the CC info if present.
+      if (!empty($_POST['ACCT']) && !empty($_POST['EXPDATE'])) {
+        // Convert the MMYY expiration date to a MM/YY format.
+        $exp = str_pad($_POST['EXPDATE'], 4, '0', STR_PAD_LEFT);
+        $exp = substr($exp, 0, 2) . '/' . substr($exp, -2);
+
+        if (!empty($_POST['CARDTYPE'])) {
+          $message[] = t('@cardtype ending in @last4, exp. @exp', array('@cardtype' => commerce_payflow_cardtype_name($_POST['CARDTYPE']), '@last4' => $_POST['ACCT'], '@exp' => $exp));
+        }
+        else {
+          $message[] = t('Credit card ending in @last4, exp. @exp', array('@last4' => $_POST['ACCT'], '@exp' => $exp));
+        }
+      }
+
       // Add the AVS response if present.
-      if (!empty($_POST['AVSDATA'])) {
-        $message[] = t('AVS response: @avs', array('@avs' => $_POST['AVSDATA']));
+      if (!empty($_POST['AVSADDR']) || !empty($_POST['AVSZIP']) || !empty($_POST['AVSDATA'])) {
+        if (!empty($_POST['AVSDATA'])) {
+          $avsdata = $_POST['AVSDATA'];
+        }
+        else {
+          $avsdata = '';
+
+          if (!empty($_POST['AVSADDR'])) {
+            $avsdata .= $_POST['AVSADDR'];
+          }
+
+          if (!empty($_POST['AVSZIP'])) {
+            $avsdata .= $_POST['AVSZIP'];
+          }
+        }
+
+        $message[] = t('AVS response: @avs', array('@avs' => $avsdata));
       }
 
       // Add the CVV response if present.
@@ -416,16 +462,21 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
         $message[] = t('CVV2 match: @cvv', array('@cvv' => commerce_paypal_cvv_match_message($_POST['PROCCVV2'])));
       }
 
+      // Add the pending reason if present.
+      if (!empty($_POST['PENDINGREASON'])) {
+        $message[] = commerce_payflow_pending_reason($_POST['PENDINGREASON']);
+      }
+
       break;
 
     case 126:
-      // Create a failed transaction with the error message.
+      // Create a pending transaction with a generic fraud message.
       $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
       $message[] = '<b>' . t('@action - pending fraud review', array('@action' => $trxtype_name)) . '</b>';
   }
 
   // Store the type of transaction in the remote status.
-  $transaction->remote_status = $_POST['TYPE'];
+  $transaction->remote_status = $trxtype;
 
   // Set the final message.
   $transaction->message = implode('<br />', $message);
@@ -867,5 +918,53 @@ function commerce_payflow_trxtype_name($trxtype) {
       return t('Authorization and capture');
     default:
       return t('Unknown transaction type');
+  }
+}
+
+/**
+ * Returns the name of the credit card type matching the CARDTYPE value.
+ */
+function commerce_payflow_cardtype_name($cardtype) {
+  switch (intval($cardtype)) {
+    case 0:
+      return t('Visa');
+    case 1:
+      return t('MasterCard');
+    case 2:
+      return t('Discover');
+    case 3:
+      return t('American Express');
+    case 4:
+      return t("Diner's Club");
+    case 5:
+      return t('JCB');
+    default:
+      return t('Credit card');
+  }
+}
+
+/**
+ * Returns the description of the pending reason based on the given value.
+ */
+function commerce_payflow_pending_reason($pendingreason) {
+  switch ($pendingreason) {
+    case 'none':
+      return t('No pending reason.');
+    case 'address':
+      return t('Pending unconfirmed address review.');
+    case 'echeck':
+      return t('eCheck has not yet cleared.');
+    case 'intl':
+      return t('Pending international transaction review.');
+    case 'multi-currency':
+      return t('Pending multi-currency review.');
+    case 'verify':
+      return t('Payment held until your account is verified.');
+    case 'completed':
+      return t('Payment has been completed.');
+    case 'other':
+      return t('Pending for an unknown reason.');
+    default:
+      return '';
   }
 }
