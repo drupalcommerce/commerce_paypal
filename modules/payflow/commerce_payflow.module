@@ -196,7 +196,7 @@ function commerce_payflow_link_default_settings() {
   $default_currency = commerce_default_currency();
 
   return array(
-    'partner' => '',
+    'partner' => 'PayPal',
     'vendor' => '',
     'user' => '',
     'password' => '',
@@ -253,7 +253,7 @@ function commerce_payflow_link_settings_form($settings = array()) {
   $form['mode'] = array(
     '#type' => 'radios',
     '#title' => t('Processing mode'),
-    '#description' => t('Either mode requires a Payflow account with Hosted Checkout Pages support.'),
+    '#description' => t('Either mode requires a Payflow account with Hosted Checkout Pages support. Additionally, "Enable Secure Token" must be set to "Yes" in the account service settings.'),
     '#options' => array(
       'test' => ('Test - process test transactions to an account in test mode'),
       'live' => ('Live - process real transactions to a live account'),
@@ -723,6 +723,9 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
     $currency_code = 'USD';
   }
 
+  // Prepare a transaction amount value in the proper currency.
+  $amt = commerce_currency_convert($order_total['amount'], $order_total['currency_code'], $currency_code);
+
   // Prepare the billing address for use in the request.
   $billing_address = $order_wrapper->commerce_customer_billing->commerce_customer_address->value();
 
@@ -740,7 +743,7 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
 
     // Indicate the type and amount of the transaction.
     'TRXTYPE' => $payment_method['settings']['trxtype'],
-    'AMT' => commerce_currency_amount_to_decimal(commerce_currency_convert($order_total['amount'], $order_total['currency_code'], $currency_code), $currency_code),
+    'AMT' => commerce_paypal_price_amount($amt, $currency_code),
     'CURRENCY' => $currency_code,
     'INVNUM' => commerce_paypal_ipn_invoice($order),
 
@@ -791,6 +794,9 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
     );
   }
 
+  // Add the line item details to the array.
+  $nvp += commerce_payflow_link_itemize_order($order, $currency_code);
+
   // Submit the API request to Payflow.
   $response = commerce_payflow_api_request($payment_method, 'pro', $nvp, $order);
 
@@ -801,6 +807,87 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
 
   // Otherwise indicate failure by returning FALSE.
   return FALSE;
+}
+
+/**
+ * Returns an itemized order data array for use in a name-value pair array.
+ *
+ * @param $order
+ *   The order whose line items should be converted into name-value pairs.
+ * @param $currency_code
+ *   The currency code to use to calculate all amounts.
+ *
+ * @return
+ *   The name-value pair array representing the line items that should be added
+ *   to the name-value pair array for an API request.
+ */
+function commerce_payflow_link_itemize_order($order, $currency_code) {
+  $nvp = array();
+  $currency = commerce_currency_load($currency_code);
+
+  // Extract the order total value array.
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $order_total = $order_wrapper->commerce_order_total->value();
+
+  // Initialize the order level amount parameter.
+  $amt = commerce_currency_convert($order_total['amount'], $order_total['currency_code'], $currency_code);
+
+  // Loop over all the line items on the order.
+  $i = 1;
+
+  foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
+    // Extract the unit price total value array.
+    $unit_price = $line_item_wrapper->commerce_unit_price->value();
+
+    // Determine the amount of tax included in this line item.
+    $l_taxamt = 0;
+
+    foreach (commerce_tax_components($unit_price['data']['components']) as $component) {
+      $l_taxamt += commerce_currency_convert($component['price']['amount'], $component['price']['currency_code'], $currency_code);
+    }
+
+    $l_taxamt = commerce_tax_total_amount($unit_price['data']['components'], FALSE, $currency_code);
+
+    // Calculate the cost as the unit price minus the tax amount and add it to
+    // the running total for the order.
+    $l_cost = commerce_currency_convert($unit_price['amount'], $unit_price['currency_code'], $currency_code);
+
+    // Add the line item to the return array.
+    $nvp += array(
+      'L_NAME' . $i => commerce_line_item_title($line_item_wrapper->value()),
+      'L_COST' . $i => commerce_paypal_price_amount($l_cost, $currency_code),
+      'L_TAXAMT' . $i => commerce_paypal_price_amount($l_taxamt, $currency_code),
+      'L_QTY' . $i => round($line_item_wrapper->quantity->value()),
+    );
+
+    // If it was a product line item, add the SKU.
+    if (in_array($line_item_wrapper->type->value(), commerce_product_line_item_types())) {
+      $nvp += array(
+        'L_SKU' . $i => $line_item_wrapper->line_item_label->value(),
+      );
+    }
+
+    $i++;
+  }
+
+  // Determine the order level item amount and tax amount line items. To prevent
+  // rounding problems getting in the way, we calculate them based on the order
+  // total instead of tallying it from each line item.
+  $taxamt = 0;
+
+  foreach (commerce_tax_components($order_total['data']['components']) as $component) {
+    $taxamt += commerce_currency_convert($component['price']['amount'], $component['price']['currency_code'], $currency_code);
+  }
+
+  $taxamt = commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code);
+
+  // Add payment details line items.
+  $nvp += array(
+    'ITEMAMT' => commerce_paypal_price_amount($amt - $taxamt, $currency_code),
+    'TAXAMT' => commerce_paypal_price_amount($taxamt, $currency_code),
+  );
+
+  return $nvp;
 }
 
 /**

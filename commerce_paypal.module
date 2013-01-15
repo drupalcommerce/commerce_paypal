@@ -572,3 +572,19 @@ function commerce_paypal_icons() {
 
   return $icons;
 }
+
+/**
+ * Formats a price amount into a decimal value as expected by PayPal.
+ *
+ * @param $amount
+ *   An integer price amount.
+ * @param $currency_code
+ *   The currency code of the price.
+ *
+ * @return
+ *   The decimal price amount as expected by PayPal API servers.
+ */
+function commerce_paypal_price_amount($amount, $currency_code) {
+  $rounded_amount = commerce_currency_round($amount, commerce_currency_load($currency_code));
+  return number_format(commerce_currency_amount_to_decimal($rounded_amount, $currency_code), 2, '.', '');
+}
