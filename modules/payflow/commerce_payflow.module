@@ -745,13 +745,13 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
     'INVNUM' => commerce_paypal_ipn_invoice($order),
 
     // Add the billing address.
-    'BILLTOFIRSTNAME' => $billing_address['first_name'],
-    'BILLTOLASTNAME' => $billing_address['last_name'],
-    'BILLTOSTREET' => $billing_address['thoroughfare'],
-    'BILLTOCITY' => $billing_address['locality'],
-    'BILLTOSTATE' => $billing_address['administrative_area'],
-    'BILLTOCOUNTRY' => $billing_address['country'],
-    'BILLTOZIP' => $billing_address['postal_code'],
+    'BILLTOFIRSTNAME' => susbtr($billing_address['first_name'], 0, 45),
+    'BILLTOLASTNAME' => susbtr($billing_address['last_name'], 0, 45),
+    'BILLTOSTREET' => susbtr($billing_address['thoroughfare'], 0, 150),
+    'BILLTOCITY' => susbtr($billing_address['locality'], 0, 45),
+    'BILLTOSTATE' => susbtr($billing_address['administrative_area'], 0, 2),
+    'BILLTOCOUNTRY' => susbtr($billing_address['country'], 0, 2),
+    'BILLTOZIP' => susbtr($billing_address['postal_code'], 0, 10),
 
     // Add application specific parameters.
     'BUTTONSOURCE' => $payment_method['buttonsource'],
@@ -781,14 +781,13 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
 
     // Add the shipping address parameters to the request.
     $nvp += array(
-    // Add the billing address.
-    'SHIPTOFIRSTNAME' => $billing_address['first_name'],
-    'SHIPTOLASTNAME' => $billing_address['last_name'],
-    'SHIPTOSTREET' => $billing_address['thoroughfare'],
-    'SHIPTOCITY' => $billing_address['locality'],
-    'SHIPTOSTATE' => $billing_address['administrative_area'],
-    'SHIPTOCOUNTRY' => $billing_address['country'],
-    'SHIPTOZIP' => $billing_address['postal_code'],
+      'SHIPTOFIRSTNAME' => susbtr($shipping_address['first_name'], 0, 45),
+      'SHIPTOLASTNAME' => susbtr($shipping_address['last_name'], 0, 45),
+      'SHIPTOSTREET' => susbtr($shipping_address['thoroughfare'], 0, 150),
+      'SHIPTOCITY' => susbtr($shipping_address['locality'], 0, 45),
+      'SHIPTOSTATE' => susbtr($shipping_address['administrative_area'], 0, 2),
+      'SHIPTOCOUNTRY' => susbtr($shipping_address['country'], 0, 2),
+      'SHIPTOZIP' => susbtr($shipping_address['postal_code'], 0, 10),
     );
   }
 
