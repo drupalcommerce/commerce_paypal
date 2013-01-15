@@ -83,7 +83,7 @@ function commerce_payflow_link_capture_form_validate($form, &$form_state) {
 
   // If the authorization has expired, display an error message and redirect.
   if (REQUEST_TIME - $transaction->created > 86400 * 29) {
-    drupal_set_message(t('This authorization has passed its 29 day limit cannot be captured.'), 'error');
+    drupal_set_message(t('This authorization has passed its 29 day limit and cannot be captured.'), 'error');
     drupal_goto('admin/commerce/orders/' . $form_state['order']->order_id . '/payment');
   }
 }
@@ -135,6 +135,126 @@ function commerce_payflow_link_capture_form_submit($form, &$form_state) {
 
   // Save the updated original transaction.
   commerce_payment_transaction_save($transaction);
+
+  // Redirect back to the current order payment page.
+  $form_state['redirect'] = 'admin/commerce/orders/' . $form_state['order']->order_id . '/payment';
+}
+
+/**
+ * Form callback: allows the user to perform a reference transaction.
+ */
+function commerce_payflow_link_reference_form($form, &$form_state, $order, $transaction) {
+  $form_state['order'] = $order;
+  $form_state['transaction'] = $transaction;
+
+  // Load and store the payment method instance for this transaction.
+  $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
+  $form_state['payment_method'] = $payment_method;
+
+  $balance = commerce_payment_order_balance($order);
+
+  // Convert the balance to the transaction currency.
+  if ($balance['currency_code'] != $transaction->currency_code) {
+    $balance['amount'] = commerce_currency_convert($balance['amount'], $balance['currency_code'], $transaction->currency_code);
+    $balance['currency_code'] = $transaction->currency_code;
+  }
+
+  // Convert the price amount to a user friendly decimal value or leave it blank
+  // if there is no oustanding balance on the order.
+  if ($balance['amount'] > 0) {
+    $default_amount = commerce_currency_amount_to_decimal($balance['amount'], $transaction->currency_code);
+  }
+  else {
+    $default_amount = '';
+  }
+
+  $description = implode('<br />', array(
+    t('Order balance: @balance', array('@balance' => commerce_currency_format($balance['amount'], $balance['currency_code']))),
+  ));
+
+  $form['amount'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Capture amount'),
+    '#description' => $description,
+    '#default_value' => $default_amount,
+    '#field_suffix' => check_plain($transaction->currency_code),
+    '#size' => 16,
+  );
+
+  $form = confirm_form($form,
+    t('What amount do you want to capture?'),
+    'admin/commerce/orders/' . $order->order_id . '/payment',
+    '',
+    t('Capture'),
+    t('Cancel'),
+    'confirm'
+  );
+
+  return $form;
+}
+
+/**
+ * Validate handler: ensure a valid amount is given.
+ */
+function commerce_payflow_link_reference_form_validate($form, &$form_state) {
+  $transaction = $form_state['transaction'];
+  $amount = $form_state['values']['amount'];
+
+  // Ensure a positive numeric amount has been entered for capture.
+  if (!is_numeric($amount) || $amount <= 0) {
+    form_set_error('amount', t('You must specify a positive numeric amount to capture.'));
+  }
+
+  // If the transaction has expired, display an error message and redirect.
+  if (REQUEST_TIME - $transaction->created > 86400 * 365) {
+    drupal_set_message(t('This transaction has passed its 365 day limit and can no longer be used for reference transactions.'), 'error');
+    drupal_goto('admin/commerce/orders/' . $form_state['order']->order_id . '/payment');
+  }
+}
+
+/**
+ * Submit handler: process a reference transaction via Payflow Pro.
+ */
+function commerce_payflow_link_reference_form_submit($form, &$form_state) {
+  $transaction = $form_state['transaction'];
+  $amount = $form_state['values']['amount'];
+
+  $order = $form_state['order'];
+  $payment_method = $form_state['payment_method'];
+
+  // Prepare a name-value pair array to capture the requested amount.
+  $nvp = array(
+    'TRXTYPE' => 'S',
+    'ORIGID' => $transaction->remote_id,
+    'AMT' => $amount,
+    'TENDER' => 'C',
+  );
+
+  // Submit the reference transaction request to Payflow Pro.
+  $response = commerce_payflow_api_request($payment_method, 'pro', $nvp, $order);
+
+  // Create a new transaction to represent the reference transaction.
+  $new_transaction = clone($transaction);
+  unset($new_transaction->transaction_id, $new_transaction->revision_id, $new_transaction->created, $new_transaction->changed);
+  $new_transaction->amount = commerce_currency_decimal_to_amount($amount, $transaction->currency_code);
+  $new_transaction->payload[REQUEST_TIME . '-reference'] = $response;
+  $new_transaction->remote_id = $response['PNREF'];
+  $new_transaction->remote_status = 'S';
+
+  if (intval($response['RESULT']) === 0) {
+    drupal_set_message(t('Reference transaction processed successfully.'));
+    $new_transaction->message = t('Reference transaction from @origid.', array('@origid' => $transaction->remote_id));
+    $new_transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+  }
+  else {
+    // Display an error message but leave the transaction pending.
+    drupal_set_message(t('Refrence transaction failed: @reason', array('@reason' => $response['RESPMSG'])), 'error');
+    $new_transaction->message = t('Failed reference transaction from @origid.', array('@origid' => $transaction->remote_id));
+    $new_transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+  }
+
+  // Save the new transaction.
+  commerce_payment_transaction_save($new_transaction);
 
   // Redirect back to the current order payment page.
   $form_state['redirect'] = 'admin/commerce/orders/' . $form_state['order']->order_id . '/payment';
@@ -205,4 +325,112 @@ function commerce_payflow_link_void_form_submit($form, &$form_state) {
   commerce_payment_transaction_save($transaction);
 
   $form_state['redirect'] = 'admin/commerce/orders/' . $form_state['order']->order_id . '/payment';
+}
+
+/**
+ * Form callback: allows the user to issue a credit on a prior transaction.
+ */
+function commerce_payflow_link_refund_form($form, &$form_state, $order, $transaction) {
+  $form_state['order'] = $order;
+  $form_state['transaction'] = $transaction;
+
+  // Load and store the payment method instance for this transaction.
+  $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
+  $form_state['payment_method'] = $payment_method;
+
+  $default_amount = commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code);
+
+  $form['amount'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Refund amount'),
+    '#description' => t('Enter the amount to be refunded back to the original credit card.'),
+    '#default_value' => $default_amount,
+    '#field_suffix' => check_plain($transaction->currency_code),
+    '#size' => 16,
+  );
+
+  $form = confirm_form($form,
+    t('What amount do you want to refund?'),
+    'admin/commerce/orders/' . $order->order_id . '/payment',
+    '',
+    t('Refund'),
+    t('Cancel'),
+    'confirm'
+  );
+
+  return $form;
+}
+
+/**
+ * Validate handler: check the credit amount before attempting refund request.
+ */
+function commerce_payflow_link_refund_form_validate($form, &$form_state) {
+  $transaction = $form_state['transaction'];
+  $amount = $form_state['values']['amount'];
+
+  // Ensure a positive numeric amount has been entered for credit.
+  if (!is_numeric($amount) || $amount <= 0) {
+    form_set_error('amount', t('You must specify a positive numeric amount to credit.'));
+  }
+
+  // Ensure the amount is less than or equal to the captured amount.
+  if ($amount > commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code)) {
+    form_set_error('amount', t('You cannot refund more than you captured.'));
+  }
+
+  // If the transaction is older than 120 days, display an error message and redirect.
+  /*if (time() - $transaction->created > 86400 * 120) {
+    drupal_set_message(t('This capture has passed its 120 day limit for issuing credits.'), 'error');
+    drupal_goto('admin/commerce/orders/' . $form_state['order']->order_id . '/payment');
+  }*/
+}
+
+/**
+ * Submit handler: process a refund via Payflow Pro.
+ */
+function commerce_payflow_link_refund_form_submit($form, &$form_state) {
+  $transaction = $form_state['transaction'];
+  $amount = $form_state['values']['amount'];
+  $order = $form_state['order'];
+  $payment_method = $form_state['payment_method'];
+
+  // Prepare a name-value pair array to capture the requested amount.
+  $nvp = array(
+    'TRXTYPE' => 'C',
+    'ORIGID' => $transaction->remote_id,
+    'AMT' => $amount,
+  );
+
+  // Submit the capture request request to Payflow Pro.
+  $response = commerce_payflow_api_request($payment_method, 'pro', $nvp, $order);
+
+  // If the credit succeeded...
+  if (intval($response['RESULT']) === 0) {
+    $credit_amount = commerce_currency_decimal_to_amount($amount, $transaction->currency_code);
+    drupal_set_message(t('Refund for @amount issued successfully.', array('@amount' => commerce_currency_format($credit_amount, $transaction->currency_code))));
+
+    // Create a new transaction to record the credit.
+    $credit_transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
+    $credit_transaction->instance_id = $payment_method['instance_id'];
+    $credit_transaction->remote_id = $response['PNREF'];
+    $credit_transaction->amount = $credit_amount * -1;
+    $credit_transaction->currency_code = $transaction->currency_code;
+    $credit_transaction->payload[REQUEST_TIME] = $response;
+    $credit_transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+    $credit_transaction->remote_status = 'C';
+    $credit_transaction->message = t('Refunded to @remote_id.', array('@remote_id' => $transaction->remote_id));
+
+    // Save the credit transaction.
+    commerce_payment_transaction_save($credit_transaction);
+  }
+  else {
+    // Display a failure message and response reason from Payflow.
+    drupal_set_message(t('Refund failed: @reason', array('@reason' => $response['RESPMSG'])), 'error');
+
+    // Save the failure response message to the original transaction.
+    $transaction->payload[REQUEST_TIME . '-refund'] = $response;
+    commerce_payment_transaction_save($transaction);
+  }
+
+  $form_state['redirect'] = 'admin/commerce/orders/' . $order->order_id . '/payment';
 }

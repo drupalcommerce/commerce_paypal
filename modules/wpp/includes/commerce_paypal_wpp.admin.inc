@@ -83,7 +83,7 @@ function commerce_paypal_wpp_capture_form_validate($form, &$form_state) {
 
   // If the authorization has expired, display an error message and redirect.
   if (REQUEST_TIME - $transaction->created > 86400 * 29) {
-    drupal_set_message(t('This authorization has passed its 29 day limit cannot be captured.'), 'error');
+    drupal_set_message(t('This authorization has passed its 29 day limit and cannot be captured.'), 'error');
     drupal_goto('admin/commerce/orders/' . $form_state['order']->order_id . '/payment');
   }
 }
