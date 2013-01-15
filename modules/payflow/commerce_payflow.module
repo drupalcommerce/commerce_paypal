@@ -475,73 +475,67 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   // Build a meaningful response message.
   $message = array();
 
-  // Set the transaction status and message based on the acknowledgment code.
-  switch (intval($_POST['RESULT'])) {
-    case 0:
-      // Set the transaction status based on the type of transaction this was.
-      switch ($trxtype) {
-        case 'S':
-          $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
-          break;
+  // Set the transaction status based on the type of transaction this was.
+  if (intval($_POST['RESULT']) == 0) {
+    switch ($trxtype) {
+      case 'S':
+        $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+        break;
 
-        case 'A':
-        default:
-          $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
-          break;
+      case 'A':
+      default:
+        $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+        break;
+    }
+    $message[] = '<b>' . t('@action - Success', array('@action' => $trxtype_name)) . '</b>';
+  }
+  elseif (intval($_POST['RESULT']) == 126) {
+    $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+    $message[] = '<b>' . t('@action - Pending fraud review', array('@action' => $trxtype_name)) . '</b>';
+  }
+
+  // Add the CC info if present.
+  if (!empty($_POST['ACCT']) && !empty($_POST['EXPDATE'])) {
+    // Convert the MMYY expiration date to a MM/YY format.
+    $exp = str_pad($_POST['EXPDATE'], 4, '0', STR_PAD_LEFT);
+    $exp = substr($exp, 0, 2) . '/' . substr($exp, -2);
+
+    if (isset($_POST['CARDTYPE'])) {
+      $message[] = t('@cardtype ending in @last4, exp. @exp', array('@cardtype' => commerce_payflow_cardtype_name($_POST['CARDTYPE']), '@last4' => $_POST['ACCT'], '@exp' => $exp));
+    }
+    else {
+      $message[] = t('Credit card ending in @last4, exp. @exp', array('@last4' => $_POST['ACCT'], '@exp' => $exp));
+    }
+  }
+
+  // Add the AVS response if present.
+  if (!empty($_POST['AVSADDR']) || !empty($_POST['AVSZIP']) || !empty($_POST['AVSDATA'])) {
+    if (!empty($_POST['AVSDATA'])) {
+      $avsdata = $_POST['AVSDATA'];
+    }
+    else {
+      $avsdata = '';
+
+      if (!empty($_POST['AVSADDR'])) {
+        $avsdata .= $_POST['AVSADDR'];
       }
 
-      $message[] = '<b>' . t('@action - Success', array('@action' => $trxtype_name)) . '</b>';
-
-      // Add the CC info if present.
-      if (!empty($_POST['ACCT']) && !empty($_POST['EXPDATE'])) {
-        // Convert the MMYY expiration date to a MM/YY format.
-        $exp = str_pad($_POST['EXPDATE'], 4, '0', STR_PAD_LEFT);
-        $exp = substr($exp, 0, 2) . '/' . substr($exp, -2);
-
-        if (isset($_POST['CARDTYPE'])) {
-          $message[] = t('@cardtype ending in @last4, exp. @exp', array('@cardtype' => commerce_payflow_cardtype_name($_POST['CARDTYPE']), '@last4' => $_POST['ACCT'], '@exp' => $exp));
-        }
-        else {
-          $message[] = t('Credit card ending in @last4, exp. @exp', array('@last4' => $_POST['ACCT'], '@exp' => $exp));
-        }
+      if (!empty($_POST['AVSZIP'])) {
+        $avsdata .= $_POST['AVSZIP'];
       }
+    }
 
-      // Add the AVS response if present.
-      if (!empty($_POST['AVSADDR']) || !empty($_POST['AVSZIP']) || !empty($_POST['AVSDATA'])) {
-        if (!empty($_POST['AVSDATA'])) {
-          $avsdata = $_POST['AVSDATA'];
-        }
-        else {
-          $avsdata = '';
+    $message[] = t('AVS response: @avs', array('@avs' => $avsdata));
+  }
 
-          if (!empty($_POST['AVSADDR'])) {
-            $avsdata .= $_POST['AVSADDR'];
-          }
+  // Add the CVV response if present.
+  if (!empty($_POST['PROCCVV2'])) {
+    $message[] = t('CVV2 match: @cvv', array('@cvv' => commerce_paypal_cvv_match_message($_POST['PROCCVV2'])));
+  }
 
-          if (!empty($_POST['AVSZIP'])) {
-            $avsdata .= $_POST['AVSZIP'];
-          }
-        }
-
-        $message[] = t('AVS response: @avs', array('@avs' => $avsdata));
-      }
-
-      // Add the CVV response if present.
-      if (!empty($_POST['PROCCVV2'])) {
-        $message[] = t('CVV2 match: @cvv', array('@cvv' => commerce_paypal_cvv_match_message($_POST['PROCCVV2'])));
-      }
-
-      // Add the pending reason if present.
-      if (!empty($_POST['PENDINGREASON'])) {
-        $message[] = commerce_payflow_pending_reason($_POST['PENDINGREASON']);
-      }
-
-      break;
-
-    case 126:
-      // Create a pending transaction with a generic fraud message.
-      $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
-      $message[] = '<b>' . t('@action - pending fraud review', array('@action' => $trxtype_name)) . '</b>';
+  // Add the pending reason if present.
+  if (!empty($_POST['PENDINGREASON'])) {
+    $message[] = commerce_payflow_pending_reason($_POST['PENDINGREASON']);
   }
 
   // Store the type of transaction in the remote status.

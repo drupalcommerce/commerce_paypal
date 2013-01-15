@@ -129,7 +129,7 @@ function commerce_payflow_link_capture_form_submit($form, &$form_state) {
     default:
       // Display an error message but leave the transaction pending.
       drupal_set_message(t('Prior authorization capture failed, so the transaction will remain in a pending status.'), 'error');
-      drupal_set_message(check_plain($response['RESPMESG']), 'error');
+      drupal_set_message(check_plain($response['RESPMSG']), 'error');
       break;
   }
 
@@ -199,7 +199,7 @@ function commerce_payflow_link_void_form_submit($form, &$form_state) {
   }
   else {
     drupal_set_message(t('Prior authorization capture failed, so the transaction will remain in a pending status.'), 'error');
-    drupal_set_message(check_plain($response['RESPMESG']), 'error');
+    drupal_set_message(check_plain($response['RESPMSG']), 'error');
   }
 
   commerce_payment_transaction_save($transaction);
