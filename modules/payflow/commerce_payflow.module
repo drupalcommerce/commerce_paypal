@@ -773,6 +773,11 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
     'USER1' => $order->data['payment_redirect_key'],
   );
 
+  // If Express Checkout is enabled, include the IPN URL.
+  if (module_exists('commerce_paypal_ec') && commerce_paypal_ec_enabled()) {
+    $nvp['NOTIFYURL'] = commerce_paypal_ipn_url('commerce_paypal_ec');
+  }
+
   // If enabled, email the customer a receipt from PayPal.
   if ($payment_method['settings']['emailreceipt'] == 'TRUE') {
     $nvp['EMAILRECEIPT'] = 'TRUE';
@@ -833,7 +838,7 @@ function commerce_payflow_link_itemize_order($order, $currency_code) {
   $amt = commerce_currency_convert($order_total['amount'], $order_total['currency_code'], $currency_code);
 
   // Loop over all the line items on the order.
-  $i = 1;
+  $i = 0;
 
   foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
     // Extract the unit price total value array.

@@ -75,7 +75,7 @@ function commerce_payflow_link_capture_form_validate($form, &$form_state) {
 
   // Ensure the amount is within the allowed limit for PayPal authorizations.
   $authorization_amount = commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code);
-  $authorization_amount_upper = commerce_currency_amount_to_decimal($transaction->amount + 75, $transaction->currency_code);
+  $authorization_amount_upper = commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code) + 75;
 
   if ($amount > $authorization_amount * 1.15 || $amount > $authorization_amount_upper) {
     form_set_error('amount', t('You cannot capture an amount $75 or 115% greater than the authorization amount in PayPal WPP.'));
@@ -378,11 +378,11 @@ function commerce_payflow_link_refund_form_validate($form, &$form_state) {
     form_set_error('amount', t('You cannot refund more than you captured.'));
   }
 
-  // If the transaction is older than 120 days, display an error message and redirect.
-  /*if (time() - $transaction->created > 86400 * 120) {
-    drupal_set_message(t('This capture has passed its 120 day limit for issuing credits.'), 'error');
+  // If the transaction is older than 60 days, display an error message and redirect.
+  if (time() - $transaction->created > 86400 * 60) {
+    drupal_set_message(t('This transaction has passed its 60 day limit for issuing refunds.'), 'error');
     drupal_goto('admin/commerce/orders/' . $form_state['order']->order_id . '/payment');
-  }*/
+  }
 }
 
 /**

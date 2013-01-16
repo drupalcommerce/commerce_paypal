@@ -75,7 +75,7 @@ function commerce_paypal_wpp_capture_form_validate($form, &$form_state) {
 
   // Ensure the amount is within the allowed limit for PayPal authorizations.
   $authorization_amount = commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code);
-  $authorization_amount_upper = commerce_currency_amount_to_decimal($transaction->amount + 75, $transaction->currency_code);
+  $authorization_amount_upper = commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code) + 75;
 
   if ($amount > $authorization_amount * 1.15 || $amount > $authorization_amount_upper) {
     form_set_error('amount', t('You cannot capture an amount $75 or 115% greater than the authorization amount in PayPal WPP.'));
