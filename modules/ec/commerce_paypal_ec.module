@@ -99,6 +99,7 @@ function commerce_paypal_ec_default_settings() {
     'allow_supported_currencies' => FALSE,
     'txn_type' => COMMERCE_CREDIT_AUTH_CAPTURE,
     'ec_mode' => 'Mark',
+    'shipping_prompt' => 1,
     'log' => array('request' => 0, 'response' => 0),
     'show_payment_instructions' => FALSE,
   );
@@ -165,12 +166,30 @@ function commerce_paypal_ec_settings_form($settings = array()) {
     '#title' => t('Express Checkout mode'),
     '#description' => t('Express Checkout Account Optional (ECAO) where PayPal accounts are not required for payment may not be available in all markets.'),
     '#options' => array(
-      'Mark' => t('Require a PayPal account (this is the standard configuration)'),
-      'SoleLogin' => t('Do not require a PayPal account but default to the PayPal login form'),
-      'SoleBilling' => t('Do not require a PayPal account and default to the billing form'),
+      'Mark' => t('Require a PayPal account (this is the standard configuration).'),
+      'SoleLogin' => t('Do not require a PayPal account but default to the PayPal login form.'),
+      'SoleBilling' => t('Do not require a PayPal account and default to the billing form.'),
     ),
     '#default_value' => $settings['ec_mode'],
   );
+  $form['shipping_prompt'] = array(
+    '#type' => 'radios',
+    '#title' => t('Shipping address collection'),
+    '#description' => t('Express Checkout will only request a shipping address if the Shipping module is enabled to store the address in the order.'),
+    '#options' => array(
+      '0' => t('Do not ask for a shipping address at PayPal.'),
+    ),
+    '#default_value' => '0',
+  );
+
+  if (module_exists('commerce_shipping')) {
+    $form['shipping_prompt']['#options'] += array(
+      '1' => t('Ask for a shipping address at PayPal if the order does not have one yet.'),
+      '2' => t('Ask for a shipping address at PayPal even if the order already has one.'),
+    );
+    $form['shipping_prompt']['#default_value'] = $settings['shipping_prompt'];
+  }
+
   $form['log'] = array(
     '#type' => 'checkboxes',
     '#title' => t('Log the following messages for debugging'),
@@ -279,7 +298,7 @@ function commerce_paypal_ec_order_form_submit($form, &$form_state) {
   $order->data['payment_redirect_key'] = drupal_hash_base64(time());
 
   // Request a token from Express Checkout.
-  $token = commerce_paypal_ec_set_express_checkout($payment_method, $order);
+  $token = commerce_paypal_ec_set_express_checkout($payment_method, $order, 'ec');
 
   // If we got one back...
   if (!empty($token)) {
@@ -348,7 +367,7 @@ function commerce_paypal_ec_submit_form_submit($payment_method, $pane_form, $pan
   $order->data['payment_redirect_key'] = drupal_hash_base64(time());
 
   // Request a token from Express Checkout.
-  $token = commerce_paypal_ec_set_express_checkout($payment_method, $order);
+  $token = commerce_paypal_ec_set_express_checkout($payment_method, $order, 'mark');
 
   // If we got one back...
   if (!empty($token)) {
@@ -501,11 +520,14 @@ function commerce_paypal_ec_redirect_form_submit($order, $payment_method) {
  *   The payment method instance array containing the Express Checkout settings.
  * @param $order
  *   The order to set Express Checkout for.
+ * @param $flow
+ *   Either 'ec' or 'mark' indicating which Express Checkout flow the token is
+ *   being requested for.
  *
  * @return
  *   The Express Checkout token if successful or FALSE if not.
  */
-function commerce_paypal_ec_set_express_checkout($payment_method, $order) {
+function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow) {
   // Extract the order total value array.
   $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $order_total = $order_wrapper->commerce_order_total->value();
@@ -550,6 +572,59 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order) {
     if ($payment_method['settings']['ec_mode'] == 'SoleBilling') {
       $nvp['LANDINGPAGE'] = 'Billing';
     }
+  }
+
+  // If the shipping module is enabled...
+  if (module_exists('commerce_shipping')) {
+    // If we have a shipping address, pass it to PayPal and do not allow the
+    // customer to set a new one at PayPal.
+    if (!empty($order_wrapper->commerce_customer_shipping->commerce_customer_address)) {
+      $shipping_address = $order_wrapper->commerce_customer_shipping->commerce_customer_address->value();
+
+      // Ensure there's a name_line.
+      if (empty($shipping_address['name_line'])) {
+        $shipping_address['name_line'] = $shipping_address['first_name'] . ' ' . $shipping_address['last_name'];
+      }
+
+      // Add the shipping address fields to the request.
+      $nvp += array(
+        'PAYMENTREQUEST_0_SHIPTONAME' => substr($shipping_address['name_line'], 0, 32),
+        'PAYMENTREQUEST_0_SHIPTOSTREET' => substr($shipping_address['thoroughfare'], 0, 100),
+        'PAYMENTREQUEST_0_SHIPTOSTREET2' => substr($shipping_address['premise'], 0, 100),
+        'PAYMENTREQUEST_0_SHIPTOCITY' => substr($shipping_address['locality'], 0, 40),
+        'PAYMENTREQUEST_0_SHIPTOSTATE' => substr($shipping_address['administrative_area'], 0, 40),
+        'PAYMENTREQUEST_0_SHIPTOCOUNTRYCODE' => substr($shipping_address['country'], 0, 2),
+        'PAYMENTREQUEST_0_SHIPTOZIP' => substr($shipping_address['postal_code'], 0, 20),
+      );
+
+      // For the Mark flow, do not prompt for an address at PayPal unless the
+      // payment method explicitly asks to.
+      if ($payment_method['settings']['shipping_prompt'] != '2' && $flow == 'mark') {
+        $nvp += array(
+          'NOSHIPPING' => '1',
+          'ADDROVERRIDE' => '1',
+        );
+      }
+      else {
+        $nvp += array(
+          'NOSHIPPING' => '0',
+          'ADDROVERRIDE' => '0',
+        );
+      }
+    }
+    else {
+      // Allow the customer to specify a shipping address at PayPal if enabled.
+      if ($payment_method['settings']['shipping_prompt'] != '0') {
+        $nvp['NOSHIPPING'] = '0';
+      }
+      else {
+        $nvp['NOSHIPPING'] = '1';
+      }
+    }
+  }
+  else {
+    // Otherwise disable shipping options entirely.
+    $nvp['NOSHIPPING'] = '1';
   }
 
   // Add itemized information to the API request.
