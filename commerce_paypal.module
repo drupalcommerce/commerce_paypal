@@ -540,6 +540,34 @@ function commerce_paypal_cvv_match_message($code) {
 }
 
 /**
+ * Returns a short description of the pending reason based on the given value.
+ */
+function commerce_paypal_short_pending_reason($pendingreason) {
+  switch ($pendingreason) {
+    case 'none':
+      return t('No pending reason.');
+    case 'authorization':
+      return t('Authorization pending capture.');
+    case 'address':
+      return t('Pending unconfirmed address review.');
+    case 'echeck':
+      return t('eCheck has not yet cleared.');
+    case 'intl':
+      return t('Pending international transaction review.');
+    case 'multi-currency':
+      return t('Pending multi-currency review.');
+    case 'verify':
+      return t('Payment held until your account is verified.');
+    case 'completed':
+      return t('Payment has been completed.');
+    case 'other':
+      return t('Pending for an unknown reason.');
+    default:
+      return '';
+  }
+}
+
+/**
  * Returns an array of PayPal payment method icon img elements.
  *
  * @return

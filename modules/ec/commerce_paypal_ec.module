@@ -5,6 +5,72 @@
  * Implements PayPal Express Checkout in Drupal Commerce checkout.
  */
 
+/**
+ * Implements hook_menu().
+ */
+function commerce_paypal_ec_menu() {
+  $items = array();
+
+  // Add a menu item for capturing authorizations.
+  $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/paypal-ec-capture'] = array(
+    'title' => 'Capture',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_paypal_ec_capture_form', 3, 5),
+    'access callback' => 'commerce_paypal_ec_capture_void_access',
+    'access arguments' => array(3, 5),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 2,
+    'file' => 'includes/commerce_paypal_ec.admin.inc',
+  );
+
+  // Add a menu item for voiding authorizations.
+  $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/paypal-ec-void'] = array(
+    'title' => 'Void',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_paypal_ec_void_form', 3, 5),
+    'access callback' => 'commerce_paypal_ec_capture_void_access',
+    'access arguments' => array(3, 5),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 4,
+    'file' => 'includes/commerce_paypal_ec.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Determines access to the prior authorization capture form or void form for
+ * Paypal EC credit card transactions.
+ *
+ * @param object $order
+ *   The order the transaction is on.
+ * @param object $transaction
+ *   The payment transaction object to be captured.
+ *
+ * @return bool
+ *   TRUE or FALSE indicating access.
+ */
+function commerce_paypal_ec_capture_void_access($order, $transaction) {
+  // Return FALSE if the transaction isn't for Paypal EC or isn't awaiting capture.
+  if ($transaction->payment_method != 'paypal_ec' || $transaction->remote_status != 'Pending') {
+    return FALSE;
+  }
+
+  // Return FALSE if the transaction is not pending.
+  if ($transaction->status != COMMERCE_PAYMENT_STATUS_PENDING) {
+    return FALSE;
+  }
+
+  // Return FALSE if it is more than 29 days past the original authorization.
+  if (REQUEST_TIME - $transaction->created > 86400 * 29) {
+    return FALSE;
+  }
+
+  // Allow access if the user can update payments on this transaction.
+  return commerce_payment_transaction_access('update', $transaction);
+}
 
 /**
  * Implements hook_commerce_checkout_page_info().
@@ -710,6 +776,12 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
     }
   }
 
+  // Store the transaction ID as the parent transaction ID in case subsequent
+  // API operations alter this transaction's remote ID.
+  if (!empty($transaction->remote_id)) {
+    $transaction->data['commerce_paypal_ec']['parenttransactionid'] = $transaction->remote_id;
+  }
+
   // If we received an unknown response status...
   if (!in_array($response['PAYMENTINFO_0_PAYMENTSTATUS'], array('Failed', 'Voided', 'Pending', 'Completed', 'Refunded'))) {
     // Display an error message and remain on the same page.
@@ -745,7 +817,7 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
     case 'Pending':
       $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
       $message[] = '<strong>' . t('Payment pending at PayPal') . '</strong>';
-      $message[] = commerce_paypal_ipn_pending_reason($response['PAYMENTINFO_0_PENDINGREASON']);
+      $message[] = commerce_paypal_short_pending_reason($response['PAYMENTINFO_0_PENDINGREASON']);
       break;
 
     case 'Completed':
