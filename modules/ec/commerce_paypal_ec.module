@@ -534,13 +534,17 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
   $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $order_total = $order_wrapper->commerce_order_total->value();
 
-  // Determine the amount of tax collected on the order.
-  $tax = 0;
+  // Determine the currency code to use to actually process the transaction,
+  // which will either be the default currency code or the currency code of the
+  // order if it's supported by PayPal if that option is enabled.
+  $currency_code = $payment_method['settings']['currency_code'];
 
-  foreach ($order_total['data']['components'] as $component) {
-    if (substr($component['name'], 0, 3) == 'tax') {
-      // @todo Calculate the actual amount of tax on the order.
-    }
+  if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies('paypal_ec')))) {
+    $currency_code = $order_total['currency_code'];
+  }
+  else {
+    // Otherwise default to USD.
+    $currency_code = 'USD';
   }
 
   // Build a name-value pair array for this transaction.
@@ -555,16 +559,18 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
     // them right now.
     'ALLOWNOTE' => '0',
 
-    'PAYMENTREQUEST_0_AMT' => commerce_currency_amount_to_decimal($order_total['amount'], $order_total['currency_code']),
-    'PAYMENTREQUEST_0_CURRENCYCODE' => $order_total['currency_code'],
-    'PAYMENTREQUEST_0_TAXAMT' => commerce_currency_amount_to_decimal($tax, $order_total['currency_code']),
-    'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
     'PAYMENTREQUEST_0_PAYMENTACTION' => commerce_paypal_payment_action($payment_method['settings']['txn_type']),
+    'PAYMENTREQUEST_0_AMT' => commerce_paypal_price_amount($order_total['amount'], $order_total['currency_code']),
+    'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_code,
+    'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
 
     // Set the return and cancel URLs.
     'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
     'CANCELURL' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
   );
+
+  // Add itemized information to the API request.
+  $nvp += commerce_paypal_ec_itemize_order($order, $currency_code);
 
   // If Express Checkout Account Optional is enabled...
   if ($payment_method['settings']['ec_mode'] != 'Mark') {
@@ -629,33 +635,6 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
     $nvp['NOSHIPPING'] = '1';
   }
 
-  // Add itemized information to the API request.
-  $i = 0;
-
-  foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
-    // Extract the line item total value array.
-    $unit_price = $line_item_wrapper->commerce_unit_price->value();
-
-    // Determine the amount of tax included in this line item.
-    $item_tax = 0;
-
-    foreach ($unit_price['data']['components'] as $component) {
-      if (substr($component['name'], 0, 3) == 'tax') {
-        // @todo Calculate the actual amount of tax on the line item.
-      }
-    }
-
-    $nvp += array(
-      'L_PAYMENTREQUEST_0_NAME' . $i => commerce_line_item_title($line_item_wrapper->value()),
-      'L_PAYMENTREQUEST_0_NUMBER' . $i => $line_item_wrapper->line_item_label->value(),
-      'L_PAYMENTREQUEST_0_AMT' . $i => commerce_currency_amount_to_decimal($unit_price['amount'], $unit_price['currency_code']),
-      'L_PAYMENTREQUEST_0_TAXAMT' . $i => commerce_currency_amount_to_decimal($item_tax, $unit_price['currency_code']),
-      'L_PAYMENTREQUEST_0_QTY' . $i => round($line_item_wrapper->quantity->value()),
-    );
-
-    $i++;
-  }
-
   // Submit the SetExpressCheckout API request to PayPal.
   $response = commerce_paypal_api_request($payment_method, $nvp, $order);
 
@@ -700,14 +679,14 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
     'METHOD' => 'DoExpressCheckoutPayment',
     'TOKEN' => $order->data['commerce_paypal_ec']['token'],
     'PAYERID' => $order->data['commerce_paypal_ec']['payerid'],
-    'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
-    'PAYMENTREQUEST_0_AMT' => commerce_currency_amount_to_decimal($amount, $currency_code),
+    'PAYMENTREQUEST_0_AMT' => commerce_paypal_price_amount($amount, $currency_code),
     'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_code,
-
-    // @todo Ensure this is the same payment action requested in the
-    // SetExpressCheckout request.
+    'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
     'PAYMENTREQUEST_0_PAYMENTACTION' => commerce_paypal_payment_action($payment_method['settings']['txn_type']),
   );
+
+  // Add itemized information to the API request.
+  $nvp += commerce_paypal_ec_itemize_order($order, $currency_code);
 
   // Submit the request to PayPal.
   $response = commerce_paypal_api_request($payment_method, $nvp, $order);
@@ -793,6 +772,92 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
   }
 
   return TRUE;
+}
+
+/**
+ * Returns a name-value pair array of information to the API request.
+ *
+ * @param object $order
+ *   The order to itemized
+ * @param string $currency_code
+ *   The currency to return the different amounts.
+ *
+ * @return array
+ *   A name-value pair array.
+ */
+function commerce_paypal_ec_itemize_order($order, $currency_code) {
+  $nvp = array();
+
+  // Extract the order total value array.
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $order_total = $order_wrapper->commerce_order_total->value();
+
+  // Initialize the order level amount parameter.
+  $amt = commerce_currency_convert($order_total['amount'], $order_total['currency_code'], $currency_code);
+
+  // Loop over all the line items on the order to determine the total item
+  // amount and shipping amount.
+  $i = 0;
+
+  $shippingamt = 0;
+
+  foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
+    // If the current line item is a shipping line item, track its amount value
+    // without taxes separately from products.
+    if (module_exists('commerce_shipping') && $line_item_wrapper->type->value() == 'shipping') {
+      // Extract the unit price and the amount of taxes it contains.
+      $shipping_price = $line_item_wrapper->commerce_unit_price->value();
+      $shipping_tax = commerce_tax_total_amount($shipping_price['data']['components'], FALSE, $currency_code);
+
+      // Track the total costs of all shipping line items on an order, though
+      // typically this should be limited to one shipping line item per order.
+      $shippingamt += $shipping_price['amount'] - $shipping_tax;
+    }
+    else {
+      // Extract the line item unit price value array.
+      $unit_price = $line_item_wrapper->commerce_unit_price->value();
+
+      // Determine the amount of tax included in this line item.
+      $l_taxamt = commerce_tax_total_amount($unit_price['data']['components'], FALSE, $currency_code);
+
+      // Calculate the cost as the unit price minus the tax amount and add it to
+      // the running total for the order.
+      $l_amt = commerce_currency_convert($unit_price['amount'], $unit_price['currency_code'], $currency_code);
+
+      // Add payment details line items.
+      $nvp += array(
+        'L_PAYMENTREQUEST_0_NAME' . $i => commerce_line_item_title($line_item_wrapper->value()),
+        'L_PAYMENTREQUEST_0_AMT' . $i => commerce_paypal_price_amount($l_amt, $currency_code),
+        'L_PAYMENTREQUEST_0_TAXAMT' . $i => commerce_paypal_price_amount($l_taxamt, $currency_code),
+        'L_PAYMENTREQUEST_0_QTY' . $i => round($line_item_wrapper->quantity->value()),
+      );
+
+      // If it was a product line item, add the SKU.
+      if (in_array($line_item_wrapper->type->value(), commerce_product_line_item_types())) {
+        $nvp['L_PAYMENTREQUEST_0_NUMBER' . $i] = $line_item_wrapper->line_item_label->value();
+      }
+      else {
+        // Otherwise add the label as the description.
+        $nvp['L_PAYMENTREQUEST_0_NUMBER' . $i] = $line_item_wrapper->line_item_label->value();
+      }
+    }
+
+    $i++;
+  }
+
+  // Determine the order level item amount and tax amount line items. To prevent
+  // rounding problems getting in the way, we calculate them based on the order
+  // total instead of tallying it from each line item.
+  $taxamt = commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code);
+
+  // Add payment details line items.
+  $nvp += array(
+    'PAYMENTREQUEST_0_ITEMAMT' => commerce_paypal_price_amount($amt - $taxamt - $shippingamt, $currency_code),
+    'PAYMENTREQUEST_0_TAXAMT' => commerce_paypal_price_amount($taxamt, $currency_code),
+    'PAYMENTREQUEST_0_SHIPPINGAMT' => commerce_paypal_price_amount($shippingamt, $currency_code),
+  );
+
+  return $nvp;
 }
 
 /**
