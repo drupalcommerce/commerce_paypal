@@ -124,6 +124,12 @@ function commerce_payflow_link_capture_form_submit($form, &$form_state) {
 
       // Note the capture in the transaction message.
       $transaction->message .= '<br />' . t('Captured: @date', array('@date' => format_date(REQUEST_TIME, 'short')));
+
+      // Add the PayPal fees to the message if available.
+      if (!empty($response['FEEAMT'])) {
+        $transaction->message .= '<br />' . t('PayPal fees: @feeamt', array('@feeamt' => $response['FEEAMT']));
+      }
+
       break;
 
     default:
@@ -205,6 +211,15 @@ function commerce_payflow_link_reference_form_validate($form, &$form_state) {
     form_set_error('amount', t('You must specify a positive numeric amount to capture.'));
   }
 
+  // If the original transaction tender was PayPal, ensure there is a billing
+  // agreement ID in place.
+  if (!empty($transaction->data['commerce_payflow']['tender']) &&
+    $transaction->data['commerce_payflow']['tender'] == 'P' &&
+    empty($transaction->data['commerce_payflow']['baid'])) {
+    drupal_set_message(t('This transaction was initiated from a PayPal account, but it has no billing agreement ID for use in reference transactions.'), 'error');
+    drupal_goto('admin/commerce/orders/' . $form_state['order']->order_id . '/payment');
+  }
+
   // If the transaction has expired, display an error message and redirect.
   if (REQUEST_TIME - $transaction->created > 86400 * 365) {
     drupal_set_message(t('This transaction has passed its 365 day limit and can no longer be used for reference transactions.'), 'error');
@@ -230,6 +245,19 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
     'TENDER' => 'C',
   );
 
+  // If the refernece transaction needs to go through PayPal, add the additional
+  // parameters for the billing agreement.
+  if (!empty($transaction->data['commerce_payflow']['tender']) && $transaction->data['commerce_payflow']['tender'] == 'P') {
+    $nvp['TENDER'] = 'P';
+    $nvp['ACTION'] = 'D';
+    $nvp['BAID'] = $transaction->data['commerce_payflow']['baid'];
+
+    // Ensure the transaction references the original PNREF.
+    if (!empty($transaction->data['commerce_payflow']['pnref'])) {
+      $nvp['ORIGID'] = $transaction->data['commerce_payflow']['pnref'];
+    }
+  }
+
   // Submit the reference transaction request to Payflow Pro.
   $response = commerce_payflow_api_request($payment_method, 'pro', $nvp, $order);
 
@@ -241,17 +269,30 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
   $new_transaction->remote_id = $response['PNREF'];
   $new_transaction->remote_status = 'S';
 
+  $message = array();
+
   if (intval($response['RESULT']) === 0) {
     drupal_set_message(t('Reference transaction processed successfully.'));
-    $new_transaction->message = t('Reference transaction from @origid.', array('@origid' => $transaction->remote_id));
+    $message[] = t('Reference transaction from @origid.', array('@origid' => $transaction->remote_id));
+
+    // Add the PayPal billing agreement ID and fees if given.
+    if (!empty($response['BAID'])) {
+      $message[] = t('Billing agreement ID: @baid', array('@baid' => $response['BAID']));
+    }
+    if (!empty($response['FEEAMT'])) {
+      $message[] = t('PayPal fees: @feeamt', array('@feeamt' => $response['FEEAMT']));
+    }
+
     $new_transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
   }
   else {
     // Display an error message but leave the transaction pending.
     drupal_set_message(t('Refrence transaction failed: @reason', array('@reason' => $response['RESPMSG'])), 'error');
-    $new_transaction->message = t('Failed reference transaction from @origid.', array('@origid' => $transaction->remote_id));
+    $message[] = t('Failed reference transaction from @origid.', array('@origid' => $transaction->remote_id));
     $new_transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
   }
+
+  $new_transaction->message = implode('<br />', $message);
 
   // Save the new transaction.
   commerce_payment_transaction_save($new_transaction);

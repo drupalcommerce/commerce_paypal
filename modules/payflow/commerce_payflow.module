@@ -126,6 +126,14 @@ function commerce_payflow_link_reference_access($order, $transaction) {
     return FALSE;
   }
 
+  // Return FALSE if the transaction came through PayPal and does not have a
+  // billing agreement ID.
+  if (!empty($transaction->data['commerce_payflow']['tender']) &&
+    $transaction->data['commerce_payflow']['tender'] == 'P' &&
+    empty($transaction->data['commerce_payflow']['baid'])) {
+    return FALSE;
+  }
+
   // Return FALSE if it is more than 365 days since the original transaction.
   if (REQUEST_TIME - $transaction->created > 86400 * 365) {
     return FALSE;
@@ -376,6 +384,9 @@ function commerce_payflow_link_submit_form_submit($payment_method, $pane_form, $
   );
 
   // Request a token from Payflow Link.
+  // @todo Add and check a setting to pass a billing agreement name as the third
+  // parameter to this function to support reference transactions for payments
+  // that come through via Express Checkout.
   $token = commerce_payflow_link_create_secure_token($payment_method, $order);
 
   // If we got one back...
@@ -558,6 +569,7 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   $transaction->currency_code = $currency_code;
   $transaction->payload[REQUEST_TIME] = $_POST;
   $transaction->remote_id = $_POST['PNREF'];
+  $transaction->data['commerce_payflow']['pnref'] = $_POST['PNREF'];
 
   // Determine the type of transaction.
   if (!empty($_POST['TRXTYPE'])) {
@@ -593,6 +605,9 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
     $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
     $message[] = '<b>' . t('@action - Pending fraud review', array('@action' => $trxtype_name)) . '</b>';
   }
+
+  // Store the tender type in the transaction's data array.
+  $transaction->data['commerce_payflow']['tender'] = $_POST['TENDER'];
 
   // Add the CC info if present.
   if (!empty($_POST['ACCT']) && !empty($_POST['EXPDATE'])) {
@@ -634,8 +649,27 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   }
 
   // Add the pending reason if present.
-  if (!empty($_POST['PENDINGREASON'])) {
-    $message[] = commerce_payflow_pending_reason($_POST['PENDINGREASON']);
+  if (!empty($_POST['PENDINGREASON']) && $_POST['PENDINGREASON'] != 'completed') {
+    $message[] = commerce_paypal_short_pending_reason($_POST['PENDINGREASON']);
+  }
+
+  // If this was a PayPal payment, store whether or not it came with a billing
+  // agreement for use in reference transactions.
+  if ($_POST['TENDER'] == 'P') {
+    $message[] = t('Payment initiated from a PayPal account.');
+
+    // Add the PayPal fees if given.
+    if (!empty($_POST['FEEAMT'])) {
+      $message[] = t('PayPal fees: @feeamt', array('@feeamt' => $_POST['FEEAMT']));
+    }
+
+    if (!empty($_POST['BAID'])) {
+      $transaction->data['commerce_payflow']['baid'] = $_POST['BAID'];
+      $message[] = t('Billing agreement ID: @baid', array('@baid' => $_POST['BAID']));
+    }
+    else {
+      $transaction->data['commerce_payflow']['baid'] = '';
+    }
   }
 
   // Store the type of transaction in the remote status.
@@ -665,7 +699,7 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
       // If we find Payflow Link, include its CSS on the form and exit the loop.
       if ($method_id == 'payflow_link') {
         $payflow_link = TRUE;
-        $value = t('Credit card or PayPal:') . ' ' . implode(' ', $icons);
+        $value = t('Credit card, debit card, or PayPal:') . ' ' . implode(' ', $icons);
       }
     }
 
@@ -698,11 +732,14 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
  *   The payment method instance to use to generate the Secure Token.
  * @param $order
  *   The order whose details should be submitted in the Secure Token request.
+ * @param $billing_agreement
+ *   The name to use for PayPal billing agreements if the customer pays via
+ *   Express Checkout and the site needs to perform reference transactions.
  *
  * @return
  *   The Secure Token if successfully retrieved or FALSE on failure.
  */
-function commerce_payflow_link_create_secure_token($payment_method, $order) {
+function commerce_payflow_link_create_secure_token($payment_method, $order, $billing_agreement = NULL) {
   // Extract the order total value array.
   $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $order_total = $order_wrapper->commerce_order_total->value();
@@ -714,7 +751,7 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
     $currency_code = $payment_method['settings']['currency_code'];
     $order_currency_code = $order_total['currency_code'];
 
-    if (!empty($settings['allow_supported_currencies']) && in_array($order_currency_code, array_keys(commerce_paypal_currencies('paypal_wps')))) {
+    if (!empty($settings['allow_supported_currencies']) && in_array($order_currency_code, array_keys(commerce_paypal_currencies('payflow_link')))) {
       $currency_code = $order_currency_code;
     }
   }
@@ -776,6 +813,15 @@ function commerce_payflow_link_create_secure_token($payment_method, $order) {
   // If Express Checkout is enabled, include the IPN URL.
   if (module_exists('commerce_paypal_ec') && commerce_paypal_ec_enabled()) {
     $nvp['NOTIFYURL'] = commerce_paypal_ipn_url('commerce_paypal_ec');
+  }
+
+  // If a billing agreement description is passed in, set its parameters.
+  if (!is_null($billing_agreement)) {
+    $nvp['BILLINGTYPE'] = 'MerchantInitiatedBilling';
+
+    if (!empty($billing_agreement)) {
+      $nvp['BA_DESC'] = $billing_agreement;
+    }
   }
 
   // If enabled, email the customer a receipt from PayPal.
@@ -845,12 +891,6 @@ function commerce_payflow_link_itemize_order($order, $currency_code) {
     $unit_price = $line_item_wrapper->commerce_unit_price->value();
 
     // Determine the amount of tax included in this line item.
-    $l_taxamt = 0;
-
-    foreach (commerce_tax_components($unit_price['data']['components']) as $component) {
-      $l_taxamt += commerce_currency_convert($component['price']['amount'], $component['price']['currency_code'], $currency_code);
-    }
-
     $l_taxamt = commerce_tax_total_amount($unit_price['data']['components'], FALSE, $currency_code);
 
     // Calculate the cost as the unit price minus the tax amount and add it to
@@ -878,12 +918,6 @@ function commerce_payflow_link_itemize_order($order, $currency_code) {
   // Determine the order level item amount and tax amount line items. To prevent
   // rounding problems getting in the way, we calculate them based on the order
   // total instead of tallying it from each line item.
-  $taxamt = 0;
-
-  foreach (commerce_tax_components($order_total['data']['components']) as $component) {
-    $taxamt += commerce_currency_convert($component['price']['amount'], $component['price']['currency_code'], $currency_code);
-  }
-
   $taxamt = commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code);
 
   // Add payment details line items.
@@ -1233,31 +1267,5 @@ function commerce_payflow_cardtype_name($cardtype) {
       return t('JCB');
     default:
       return t('Credit card');
-  }
-}
-
-/**
- * Returns the description of the pending reason based on the given value.
- */
-function commerce_payflow_pending_reason($pendingreason) {
-  switch ($pendingreason) {
-    case 'none':
-      return t('No pending reason.');
-    case 'address':
-      return t('Pending unconfirmed address review.');
-    case 'echeck':
-      return t('eCheck has not yet cleared.');
-    case 'intl':
-      return t('Pending international transaction review.');
-    case 'multi-currency':
-      return t('Pending multi-currency review.');
-    case 'verify':
-      return t('Payment held until your account is verified.');
-    case 'completed':
-      return t('Payment has been completed.');
-    case 'other':
-      return t('Pending for an unknown reason.');
-    default:
-      return '';
   }
 }
