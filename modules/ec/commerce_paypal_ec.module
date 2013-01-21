@@ -655,6 +655,7 @@ function commerce_paypal_ec_paypal_ipn_process($order, $payment_method, &$ipn) {
     // If not, bail now because authorization transactions should be created by
     // the Express Checkout API request itself.
     if (!$transaction) {
+      watchdog('commerce_paypal_ec', 'IPN for Order @order_number ignored: authorization transaction already created.', array('@order_number' => $order->order_number), WATCHDOG_NOTICE);
       return FALSE;
     }
   }
@@ -667,6 +668,7 @@ function commerce_paypal_ec_paypal_ipn_process($order, $payment_method, &$ipn) {
   else {
     // In other circumstances, exit the processing, because we handle those
     // cases directly during API response processing.
+    watchdog('commerce_paypal_ec', 'IPN for Order @order_number ignored: this operation was accommodated in the direct API response.', array('@order_number' => $order->order_number), WATCHDOG_NOTICE);
     return FALSE;
   }
 
@@ -770,11 +772,11 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
     'PAYMENTREQUEST_0_AMT' => commerce_paypal_price_amount($order_total['amount'], $order_total['currency_code']),
     'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_code,
     'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
+    'PAYMENTREQUEST_0_NOTIFYURL' => commerce_paypal_ipn_url($payment_method['instance_id']),
 
     // Set the return and cancel URLs.
     'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
     'CANCELURL' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
-    'NOTIFYURL' => commerce_paypal_ipn_url($payment_method['instance_id']),
   );
 
   // Add itemized information to the API request.
