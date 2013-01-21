@@ -772,7 +772,6 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
     'PAYMENTREQUEST_0_AMT' => commerce_paypal_price_amount($order_total['amount'], $order_total['currency_code']),
     'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_code,
     'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
-    'PAYMENTREQUEST_0_NOTIFYURL' => commerce_paypal_ipn_url($payment_method['instance_id']),
 
     // Set the return and cancel URLs.
     'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
@@ -893,6 +892,7 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
     'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_code,
     'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
     'PAYMENTREQUEST_0_PAYMENTACTION' => commerce_paypal_payment_action($payment_method['settings']['txn_type']),
+    'PAYMENTREQUEST_0_NOTIFYURL' => commerce_paypal_ipn_url($payment_method['instance_id']),
   );
 
   // Add itemized information to the API request.
