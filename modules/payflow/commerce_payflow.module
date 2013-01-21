@@ -213,6 +213,7 @@ function commerce_payflow_link_default_settings() {
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('payflow_link'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
     'redirect_mode' => 'get',
+    'ba_desc' => '',
     'show_payment_instructions' => FALSE,
     'emailreceipt' => 'TRUE',
     'log' => array('request' => 0, 'response' => 0),
@@ -305,6 +306,12 @@ function commerce_payflow_link_settings_form($settings = array()) {
     ),
     '#default_value' => $settings['redirect_mode'],
   );
+  $form['ba_desc'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Express Checkout billing agreement description'),
+    '#description' => t('If you need to perform reference transactions on PayPal Express Checkout payments captured through Payflow, you must specify a billing agreement description.'),
+    '#default_value' => $settings['ba_desc'],
+  );
   $form['show_payment_instructions'] = array(
     '#type' => 'checkbox',
     '#title' => t('Show a message on the checkout form when Payflow Link is selected telling the customer to "Continue with checkout to complete payment via PayPal."'),
@@ -384,10 +391,14 @@ function commerce_payflow_link_submit_form_submit($payment_method, $pane_form, $
   );
 
   // Request a token from Payflow Link.
-  // @todo Add and check a setting to pass a billing agreement name as the third
-  // parameter to this function to support reference transactions for payments
-  // that come through via Express Checkout.
-  $token = commerce_payflow_link_create_secure_token($payment_method, $order);
+  $payment_method['settings']['ba_desc'] = trim($payment_method['settings']['ba_desc']);
+
+  if (!empty($payment_method['settings']['ba_desc'])) {
+    $token = commerce_payflow_link_create_secure_token($payment_method, $order, $payment_method['settings']['ba_desc']);
+  }
+  else {
+    $token = commerce_payflow_link_create_secure_token($payment_method, $order);
+  }
 
   // If we got one back...
   if (!empty($token)) {
