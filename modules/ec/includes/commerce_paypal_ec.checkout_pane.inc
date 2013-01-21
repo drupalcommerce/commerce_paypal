@@ -5,21 +5,61 @@
  * Checkout pane callback functions for the PayPal Express Checkout module.
  */
 
+/**
+ * Checkout pane callback: returns the Express Checkout pane's settings form.
+ */
+function commerce_paypal_ec_review_pane_settings_form($checkout_pane) {
+  $form = array();
+
+  // List the core checkout panes to exclude from the review and confirm page.
+  $excluded_panes = array(
+    'account',
+    'cart_contents',
+    'commerce_payment',
+    'commerce_payment_redirect',
+    'checkout_review',
+    'checkout_completion_message',
+    'paypal_ec_review',
+  );
+
+  // Create a list of checkout panes that may be included on the Express Checkout
+  // review and order page. All core Commerce panes listed above and all panes
+  // defined by the Customer module will be excluded.
+  $options = array();
+
+  foreach (commerce_checkout_panes() as $pane_id => $checkout_pane) {
+    if (!in_array($pane_id, $excluded_panes) && $checkout_pane['module'] != 'commerce_customer' ) {
+      $options[$pane_id] = check_plain($checkout_pane['name']);
+    }
+  }
+
+  // If we have available checkout panes for this page...
+  if (!empty($options)) {
+    // Allow the administrator to choose which panes the customer should see
+    // upon returning from Express Checkout.
+    $form['commerce_paypal_ec_review_embedded_panes'] = array(
+      '#type' => 'checkboxes',
+      '#title' => t('Checkout panes to include on the Express Checkout review and confirm page'),
+      '#options' => $options,
+      '#default_value' => variable_get('commerce_paypal_ec_review_embedded_panes', array()),
+    );
+  }
+
+  return $form;
+}
 
 /**
  * Checkout pane callback: returns a pane allowing the customer to review the
  * final details of the order and provide any final information required.
  *
- * @todo Provide a setting for this checkout pane that lets you specify what
- * checkout panes should be embedded in it. For example, this could let the
- * customer select a shipping service after returning to the site from PayPal.
- * This information should be included beneath the review information for
- * customer selection.
  */
 function commerce_paypal_ec_review_pane_checkout_form($form, &$form_state, $checkout_pane, $order) {
   $pane_form = array();
+  $form_state['order'] = $order;
 
-  // Otherwise add any enabled checkout panes that are visible on review.
+  $form_state['build_info']['files']['pane'] = drupal_get_path('module', 'commerce_paypal_ec') . '/includes/commerce_paypal_ec.checkout_pane.inc';
+
+  // Duplicate the review checkout pane's contents.
   $pane_form['review'] = array(
     '#theme' => 'commerce_checkout_review',
     '#data' => array(),
@@ -51,31 +91,99 @@ function commerce_paypal_ec_review_pane_checkout_form($form, &$form_state, $chec
     }
   }
 
+  // Embed other specified checkout panes in this checkout pane.
+  foreach (commerce_paypal_ec_embedded_checkout_panes() as $embedded_pane_id) {
+    $embedded_pane = commerce_checkout_pane_load($embedded_pane_id);
+
+    // If the checkout pane defines a checkout form callback...
+    if ($embedded_pane && $callback = commerce_checkout_pane_callback($embedded_pane, 'checkout_form')) {
+      // Get the form for the embedded checkout pane.
+      $embedded_pane_form = $callback($form, $form_state, $embedded_pane, $order);
+
+      // Embed it on this checkout pane if the form returned data.
+      if (!empty($embedded_pane_form)) {
+        $pane_form[$embedded_pane_id] = array(
+          '#type' => $embedded_pane['fieldset'] ? 'fieldset' : 'container',
+          '#title' => check_plain($embedded_pane['title']),
+          '#collapsible' => $embedded_pane['collapsible'],
+          '#collapsed' => $embedded_pane['collapsed'],
+          '#attributes' => array('class' => array($embedded_pane_id)),
+          '#tree' => TRUE,
+        ) + $embedded_pane_form;
+      }
+    }
+  }
+
   $pane_form['pay_now'] = array(
     '#type' => 'submit',
     '#value' => t('Pay Now'),
-    '#validate' => array('commerce_paypal_ec_review_validate'),
-    '#submit' => array('commerce_paypal_ec_review_submit'),
+    '#validate' => array('commerce_paypal_ec_review_pane_checkout_form_validate'),
+    '#submit' => array('commerce_paypal_ec_review_pane_checkout_form_submit'),
   );
 
   return $pane_form;
 }
 
 /**
- * Form callback: validates information entered on the EC review page.
+ * Validate handler for the Express Checkout review and confirm page.
  */
-function commerce_paypal_ec_review_validate($form, &$form_state) {
-  // @todo Validate and submit any checkout panes included in this page.
+function commerce_paypal_ec_review_pane_checkout_form_validate($form, &$form_state) {
+  $order = $form_state['order'];
+  $form_validate = TRUE;
+
+  // Loop through the enabled checkout panes included in this page to validate
+  // and submit them.
+  foreach (commerce_paypal_ec_embedded_checkout_panes() as $embedded_pane_id) {
+    $embedded_pane_validate = TRUE;
+
+    // Load the checkout pane to find its checkout pane validate callback.
+    $embedded_checkout_pane = commerce_checkout_pane_load($embedded_pane_id);
+
+    // Create a copy of the form and form state with the embedded checkout pane
+    // array elements at the root level.
+    $form_copy = $form;
+    $form_copy[$embedded_pane_id] = $form['paypal_ec_review'][$embedded_pane_id];
+    $form_state_copy = $form_state;
+    $form_state_copy['values'][$embedded_pane_id] = $form_state['values']['paypal_ec_review'][$embedded_pane_id];
+
+    // If it has a validate callback.
+    if ($callback = commerce_checkout_pane_callback($embedded_checkout_pane, 'checkout_form_validate')) {
+      // Give it a chance to process the submitted data.
+      $embedded_pane_validate &= $callback($form_copy, $form_state_copy, $embedded_checkout_pane, $order);
+    }
+
+    // Submit the pane if it validated.
+    if ($embedded_pane_validate && $callback = commerce_checkout_pane_callback($embedded_checkout_pane, 'checkout_form_submit')) {
+      $callback($form_copy, $form_state_copy, $embedded_checkout_pane, $order);
+    }
+
+    // If a callback triggered a rebuild, push it to the original form state.
+    if (!empty($form_state_copy['rebuild'])) {
+      $form_state['rebuild'] = $form_state_copy['rebuild'];
+    }
+
+    // A failed pane makes the form fail.
+    $form_validate &= $embedded_pane_validate;
+  }
+
+  // Save the updated order object.
+  commerce_order_save($order);
+
+  // If a pane failed validation or the form state has otherwise been altered to
+  // initiate a rebuild, return without moving to the next checkout page.
+  if (!$form_validate || $form_state['rebuild']) {
+    $form_state['rebuild'] = TRUE;
+  }
 }
 
 /**
- * Form callback: submits information entered on the EC review page.
+ * Submit handler for the Express Checkout review and confirm page.
  */
-function commerce_paypal_ec_review_submit($form, &$form_state) {
+function commerce_paypal_ec_review_pane_checkout_form_submit($form, &$form_state) {
   $order = $form_state['order'];
-  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
-
   $payment_method = commerce_payment_method_instance_load($order->data['payment_method']);
+
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $charge = $order_wrapper->commerce_order_total->value();
 
   // Attempt to process the payment.
@@ -88,7 +196,7 @@ function commerce_paypal_ec_review_submit($form, &$form_state) {
     // Update the order status to the next checkout page.
     $order = commerce_order_status_update($order, 'checkout_' . $next_page, FALSE, FALSE);
 
-    // Inform modules of checkout completion if the next page is Completed.
+    // Inform modules of checkout completion if the next page is completed.
     if ($next_page == 'complete') {
       commerce_checkout_complete($order);
     }

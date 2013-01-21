@@ -783,7 +783,7 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
   }
 
   // If we received an unknown response status...
-  if (!in_array($response['PAYMENTINFO_0_PAYMENTSTATUS'], array('Failed', 'Voided', 'Pending', 'Completed', 'Refunded'))) {
+  if (!isset($response['PAYMENTINFO_0_PAYMENTSTATUS']) || !in_array($response['PAYMENTINFO_0_PAYMENTSTATUS'], array('Failed', 'Voided', 'Pending', 'Completed', 'Refunded'))) {
     // Display an error message and remain on the same page.
     drupal_set_message(t('We could not complete your payment with PayPal. Please try again or contact us if the problem persists.'), 'error');
 
@@ -1127,4 +1127,12 @@ function commerce_paypal_ec_mark_image($remote = FALSE) {
   );
 
   return '<span class="commerce-paypal-ec-icon-wrapper">' . theme('image', $variables) . '</span>';
+}
+
+/**
+ * Returns the checkout pane IDs of checkout panes that should be embedded in
+ * the Express Checkout review and confirm page.
+ */
+function commerce_paypal_ec_embedded_checkout_panes() {
+  return array_filter(variable_get('commerce_paypal_ec_review_embedded_panes', array()));
 }
