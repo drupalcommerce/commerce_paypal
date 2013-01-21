@@ -517,7 +517,7 @@ function commerce_paypal_ec_redirect_form_back($order, $payment_method) {
 function commerce_paypal_ec_redirect_form_validate($order, $payment_method) {
   if (!empty($payment_method['settings']['ipn_logging']) &&
     $payment_method['settings']['ipn_logging'] == 'full_ipn') {
-    watchdog('commerce_paypal_wps', 'Customer returned from PayPal with the following POST data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_ec', 'Customer returned from PayPal with the following POST data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
   }
 
   // This may be an unnecessary step, but if for some reason the user does end
@@ -607,7 +607,7 @@ function commerce_paypal_ec_paypal_ipn_validate($order, $payment_method, $ipn) {
 
   // Return FALSE if the receiver e-mail does not match the one specified by
   // the payment method instance.
-  if (!in_array(trim(strtolower($ipn['receiver_email'])), $receiver_emails)) {
+  if (!empty($ipn['receiver_email']) && !in_array(trim(strtolower($ipn['receiver_email'])), $receiver_emails)) {
     commerce_payment_redirect_pane_previous_page($order);
     watchdog('commerce_paypal_ec', 'IPN rejected: invalid receiver e-mail specified (@receiver_email); must match a receiver e-mail address configured in the payment method settings.', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
     return FALSE;
@@ -623,10 +623,10 @@ function commerce_paypal_ec_paypal_ipn_validate($order, $payment_method, $ipn) {
 
   // Log a message including the PayPal transaction ID if available.
   if (!empty($ipn['txn_id'])) {
-    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number with ID @txn_id.!ipn_data', array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id'], '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_ec', 'IPN validated for Order @order_number with ID @txn_id.!ipn_data', array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id'], '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
   }
   else {
-    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number.!ipn_data', array('@order_number' => $order->order_number, '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
+    watchdog('commerce_paypal_ec', 'IPN validated for Order @order_number.!ipn_data', array('@order_number' => $order->order_number, '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
   }
 }
 
@@ -676,7 +676,7 @@ function commerce_paypal_ec_paypal_ipn_process($order, $payment_method, &$ipn) {
   $transaction->payload[REQUEST_TIME . '-ipn'] = $ipn;
 
   if (!empty($transaction->message)) {
-    $transaction .= '<br />';
+    $transaction->message .= '<br />';
   }
 
   // Set the transaction's statuses based on the IPN's payment_status.
