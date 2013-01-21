@@ -601,7 +601,7 @@ function commerce_paypal_ec_paypal_ipn_validate($order, $payment_method, $ipn) {
   // Prepare a trimmed list of receiver e-mail addresses.
   $receiver_emails = explode(',', $payment_method['settings']['receiver_emails']);
 
-  foreach ($receive_emails as $key => &$email) {
+  foreach ($receiver_emails as $key => &$email) {
     $email = trim(strtolower($email));
   }
 
