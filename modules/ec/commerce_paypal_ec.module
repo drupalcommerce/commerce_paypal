@@ -167,6 +167,7 @@ function commerce_paypal_ec_default_settings() {
     'ec_mode' => 'Mark',
     'shipping_prompt' => 1,
     'log' => array('request' => 0, 'response' => 0),
+    'ipn_logging' => 'notification',
     'show_payment_instructions' => FALSE,
   );
 }
@@ -264,6 +265,15 @@ function commerce_paypal_ec_settings_form($settings = array()) {
       'response' => t('API response messages'),
     ),
     '#default_value' => $settings['log'],
+  );
+  $form['ipn_logging'] = array(
+    '#type' => 'radios',
+    '#title' => t('IPN logging'),
+    '#options' => array(
+      'notification' => t('Log notifications during IPN validation and processing.'),
+      'full_ipn' => t('Log notifications with the full IPN during validation and processing (used for debugging).'),
+    ),
+    '#default_value' => $settings['ipn_logging'],
   );
   $form['show_payment_instructions'] = array(
     '#type' => 'checkbox',
