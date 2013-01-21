@@ -35,16 +35,16 @@ function commerce_paypal_menu() {
  * Returns the IPN URL.
  *
  * @param $method_id
- *   Optionally specify a payment method ID to include in the URL.
+ *   Optionally specify a payment method instance ID to include in the URL.
  */
-function commerce_paypal_ipn_url($method_id = NULL) {
+function commerce_paypal_ipn_url($instance_id = NULL) {
   $parts = array(
     'commerce_paypal',
     'ipn',
   );
 
-  if (!empty($method_id)) {
-    $parts[] = $method_id;
+  if (!empty($instance_id)) {
+    $parts[] = $instance_id;
   }
 
   return url(implode('/', $parts), array('absolute' => TRUE));

@@ -357,8 +357,8 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
  *   - language: the PayPal language code to use on the payment form
  *   - payment_action: the PayPal payment action to use: sale, authorization,
  *     or order
- *   - payment_method: optionally the name of the Commerce payment method to
- *     include in the IPN notify_url
+ *   - payment_method: optionally a payment method instance ID to include in the
+ *     IPN notify_url
  *
  * @return
  *   A renderable form array.

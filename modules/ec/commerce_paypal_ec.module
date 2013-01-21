@@ -1089,6 +1089,33 @@ function commerce_paypal_ec_enabled($order = NULL) {
 }
 
 /**
+ * Returns an array of enabled payment method rules that enable payment via
+ * Express Checkout.
+ *
+ * @return
+ *   An associative array where the key and value are a matching Rule name and
+ *   label for payment method rules that enable payment via Express Checkout.
+ */
+function commerce_paypal_ec_enabled_rules($enabled = FALSE) {
+  $rules = array();
+
+  // Loop over all of the enabled payment method rules.
+  foreach (rules_get_cache('event_commerce_payment_methods') as $rule) {
+    // Look in all of the Rule's actions for a payment method settings array
+    // that enables Express Checkout.
+    foreach ($rule->actions() as $action) {
+      if (!empty($action->settings['payment_method']['method_id']) &&
+        $action->settings['payment_method']['method_id'] == 'paypal_ec') {
+        // Add the present rule to the return value.
+        $rules[$rule->name] = $rule->label;
+      }
+    }
+  }
+
+  return $rules;
+}
+
+/**
  * Returns the URL to an Express Checkout button.
  *
  * @todo Allow for localization by changing en_US to a supported locale code.

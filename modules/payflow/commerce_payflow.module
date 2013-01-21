@@ -213,6 +213,8 @@ function commerce_payflow_link_default_settings() {
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('payflow_link'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
     'redirect_mode' => 'get',
+    'paypal_ec_instance' => '',
+    'paypal_ec_disable' => TRUE,
     'ba_desc' => '',
     'show_payment_instructions' => FALSE,
     'emailreceipt' => 'TRUE',
@@ -306,6 +308,29 @@ function commerce_payflow_link_settings_form($settings = array()) {
     ),
     '#default_value' => $settings['redirect_mode'],
   );
+
+  // Prepare a list of PayPal Express Checkout payment method rule options.
+  if (module_exists('commerce_paypal_ec')) {
+    $options = commerce_paypal_ec_enabled_rules();
+  }
+  else {
+    $options = array();
+  }
+
+  $form['paypal_ec_instance'] = array(
+    '#type' => 'select',
+    '#title' => t('PayPal Express Checkout payment method rule'),
+    '#description' => t('Specify the payment method rule that contains your corresponding PayPal Express Checkout configuration for this Payflow Link instance.') . '<br />' . t('If none is selected, you must disable Express Checkout in your Hosted Checkout Pages service settings in the PayPal Manager.'),
+    '#options' => $options,
+    '#default_value' => $settings['paypal_ec_instance'],
+    '#empty_value' => '',
+  );
+  $form['paypal_ec_disable'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Disable the selected PayPal Express Checkout payment method rule on the checkout form so customers must choose it at Payflow.'),
+    '#default_value' => $settings['paypal_ec_disable'],
+  );
+
   $form['ba_desc'] = array(
     '#type' => 'textfield',
     '#title' => t('Express Checkout billing agreement description'),
@@ -711,11 +736,42 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
       if ($method_id == 'payflow_link') {
         $payflow_link = TRUE;
         $value = t('Credit card, debit card, or PayPal:') . ' ' . implode(' ', $icons);
+
+        // Check to see if we should disable a corresponding Express Checkout
+        // payment method option.
+        $payment_method = commerce_payment_method_instance_load($key);
+
+        if (!empty($payment_method['settings']['paypal_ec_disable']) && !empty($payment_method['settings']['paypal_ec_instance'])) {
+          $ec_instance_id = 'paypal_ec|' . $payment_method['settings']['paypal_ec_instance'];
+
+          // Remove the option from the list.
+          unset($form['commerce_payment']['payment_method']['#options'][$ec_instance_id]);
+
+          // Reset the default selection if that happened to be it.
+          if ($form['commerce_payment']['payment_method']['#default_value'] == $ec_instance_id) {
+            reset($form['commerce_payment']['payment_method']['#options']);
+            $default_value = key($form['commerce_payment']['payment_method']['#options']);
+
+            // Set the new default value of the payment method radio buttons.
+            $form['commerce_payment']['payment_method']['#default_value'] = $default_value;
+
+            // Update the payment details area of the form if necessary.
+            $default_payment_method = commerce_payment_method_instance_load($default_value);
+
+            if ($callback = commerce_payment_method_callback($default_payment_method, 'submit_form')) {
+              $form['commerce_payment']['payment_details'] = $callback($default_payment_method, array(), commerce_checkout_pane_load('commerce_payment'), $form_state['order']);
+            }
+            else {
+              $form['commerce_payment']['payment_details'] = array();
+            }
+          }
+        }
       }
     }
 
     // If we did find Payflow Link, include its CSS now.
     if ($payflow_link) {
+      // Include its CSS on the form.
       $form['commerce_payment']['payment_method']['#attached']['css'][] = drupal_get_path('module', 'commerce_payflow') . '/theme/commerce_payflow.theme.css';
     }
   }
@@ -822,8 +878,14 @@ function commerce_payflow_link_create_secure_token($payment_method, $order, $bil
   );
 
   // If Express Checkout is enabled, include the IPN URL.
-  if (module_exists('commerce_paypal_ec') && commerce_paypal_ec_enabled()) {
-    $nvp['NOTIFYURL'] = commerce_paypal_ipn_url('commerce_paypal_ec');
+  if (module_exists('commerce_paypal_ec') && !empty($payment_method['settings']['paypal_ec_instance'])) {
+    // Ensure the Rule is still valid to receive Express Checkout IPNs.
+    if (in_array($payment_method['settings']['paypal_ec_instance'], array_keys(commerce_paypal_ec_enabled_rules()))) {
+      $nvp['NOTIFYURL'] = commerce_paypal_ipn_url('paypal_ec|' . $payment_method['settings']['paypal_ec_instance']);
+    }
+    else {
+      watchdog('commerce_payflow', 'Payflow Link is configured to use a disabled or non-existent Express Checkout payment method rule.', array(), WATCHDOG_WARNING);
+    }
   }
 
   // If a billing agreement description is passed in, set its parameters.
