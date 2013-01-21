@@ -44,8 +44,8 @@ function commerce_paypal_wps_default_settings() {
     'server' => 'sandbox',
     'payment_action' => 'sale',
     'ipn_logging' => 'notification',
-    'show_payment_instructions' => FALSE,
     'ipn_create_billing_profile' => FALSE,
+    'show_payment_instructions' => FALSE,
   );
 }
 
@@ -111,16 +111,16 @@ function commerce_paypal_wps_settings_form($settings = array()) {
     ),
     '#default_value' => $settings['ipn_logging'],
   );
-  $form['show_payment_instructions'] = array(
-    '#type' => 'checkbox',
-    '#title' => t('Show a message on the checkout form when PayPal WPS is selected telling the customer to "Continue with checkout to complete payment via PayPal."'),
-    '#default_value' => $settings['show_payment_instructions'],
-  );
   $form['ipn_create_billing_profile'] = array(
     '#type' => 'checkbox',
     '#title' => t('Create a billing profile based on name and country data in the IPN for any order that does not have one yet.'),
     '#description' => t('This is most useful for sites that do not collect billing information locally but still want to have customer names on orders.'),
     '#default_value' => $settings['ipn_create_billing_profile'],
+  );
+  $form['show_payment_instructions'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Show a message on the checkout form when PayPal WPS is selected telling the customer to "Continue with checkout to complete payment via PayPal."'),
+    '#default_value' => $settings['show_payment_instructions'],
   );
 
   return $form;
@@ -265,7 +265,7 @@ function commerce_paypal_wps_paypal_ipn_process($order, $payment_method, &$ipn) 
   $transaction->remote_id = $ipn['txn_id'];
   $transaction->amount = commerce_currency_decimal_to_amount($ipn['mc_gross'], $ipn['mc_currency']);
   $transaction->currency_code = $ipn['mc_currency'];
-  $transaction->payload[REQUEST_TIME] = $ipn;
+  $transaction->payload[REQUEST_TIME . '-ipn'] = $ipn;
 
   // Set the transaction's statuses based on the IPN's payment_status.
   $transaction->remote_status = $ipn['payment_status'];

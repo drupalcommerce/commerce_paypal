@@ -394,6 +394,20 @@ function commerce_paypal_api_server_url($server) {
 }
 
 /**
+ * Loads the payment transaction matching the PayPal transaction ID.
+ *
+ * @param $txn_id
+ *   The PayPal transaction ID to search for in the remote_id field.
+ *
+ * @return
+ *   The loaded payment transaction.
+ */
+function commerce_paypal_payment_transaction_load($txn_id) {
+  $transactions = commerce_payment_transaction_load_multiple(array(), array('remote_id' => $txn_id));
+  return $transactions ? reset($transactions) : FALSE;
+}
+
+/**
  * Returns the relevant PayPal payment action for a given transaction type.
  *
  * @param $txn_type

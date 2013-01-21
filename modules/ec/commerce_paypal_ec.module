@@ -631,6 +631,93 @@ function commerce_paypal_ec_paypal_ipn_validate($order, $payment_method, $ipn) {
 }
 
 /**
+ * Payment method callback: process an IPN once it's been validated.
+ */
+function commerce_paypal_ec_paypal_ipn_process($order, $payment_method, &$ipn) {
+  // Do not perform any processing on EC transactions here that do not have
+  // transaction IDs, indicating they are non-payment IPNs such as those used
+  // for subscription signup requests.
+  if (empty($ipn['txn_id'])) {
+    return FALSE;
+  }
+
+  // Exit when we don't get a payment status we recognize.
+  if (!in_array($ipn['payment_status'], array('Failed', 'Voided', 'Pending', 'Completed', 'Refunded'))) {
+    commerce_payment_redirect_pane_previous_page($order);
+    return FALSE;
+  }
+
+  // If this is a prior authorization capture IPN...
+  if (in_array($ipn['payment_status'], array('Voided', 'Completed')) && !empty($ipn['auth_id'])) {
+    // Ensure we can load the existing corresponding transaction.
+    $transaction = commerce_paypal_payment_transaction_load($ipn['auth_id']);
+
+    // If not, bail now because authorization transactions should be created by
+    // the Express Checkout API request itself.
+    if (!$transaction) {
+      return FALSE;
+    }
+  }
+  elseif (in_array($ipn['payment_status'], array('Failed', 'Refunded'))) {
+    // Otherwise if this is a failed bank payment or refund, create a new
+    // payment transaction to log it to the order.
+    $transaction = commerce_payment_transaction_new('paypal_ec', $order->order_id);
+    $transaction->instance_id = $payment_method['instance_id'];
+  }
+  else {
+    // In other circumstances, exit the processing, because we handle those
+    // cases directly during API response processing.
+    return FALSE;
+  }
+
+  $transaction->remote_id = $ipn['txn_id'];
+  $transaction->amount = commerce_currency_decimal_to_amount($ipn['mc_gross'], $ipn['mc_currency']);
+  $transaction->currency_code = $ipn['mc_currency'];
+  $transaction->payload[REQUEST_TIME . '-ipn'] = $ipn;
+
+  if (!empty($transaction->message)) {
+    $transaction .= '<br />';
+  }
+
+  // Set the transaction's statuses based on the IPN's payment_status.
+  $transaction->remote_status = $ipn['payment_status'];
+
+  // If we didn't get an approval response code...
+  switch ($ipn['payment_status']) {
+    case 'Failed':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+      $transaction->message .= t("The payment has failed. This happens only if the payment was made from your customer’s bank account.");
+      break;
+
+    case 'Voided':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_FAILURE;
+      $transaction->message .= t('The authorization was voided.');
+      break;
+
+    case 'Pending':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+      $transaction->message .= commerce_paypal_ipn_pending_reason($ipn['pending_reason']);
+      break;
+
+    case 'Completed':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->message .= t('The payment has completed.');
+      break;
+
+    case 'Refunded':
+      $transaction->status = COMMERCE_PAYMENT_STATUS_SUCCESS;
+      $transaction->message .= t('Refund for transaction @txn_id', array('@txn_id' => $ipn['parent_txn_id']));
+      break;
+  }
+
+  // Save the transaction information.
+  commerce_payment_transaction_save($transaction);
+  $ipn['transaction_id'] = $transaction->transaction_id;
+
+  watchdog('commerce_paypal_ec', 'IPN processed for Order @order_number with ID @txn_id.', array('@txn_id' => $ipn['txn_id'], '@order_number' => $order->order_number), WATCHDOG_INFO);
+}
+
+/**
  * Submits a SetExpressCheckout request to PayPal for the given order.
  *
  * This function does not make any changes to the given order, so storage of the
@@ -687,6 +774,7 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
     // Set the return and cancel URLs.
     'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
     'CANCELURL' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
+    'NOTIFYURL' => commerce_paypal_ipn_url($payment_method['instance_id']),
   );
 
   // Add itemized information to the API request.

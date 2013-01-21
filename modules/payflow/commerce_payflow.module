@@ -706,6 +706,14 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
     else {
       $transaction->data['commerce_payflow']['baid'] = '';
     }
+
+    // Because follow-up API requests for this transaction must be submitted
+    // directly to PayPal, check to see if there's a corresponding Express
+    // Checkout payment method configured and update the remote ID to the PayPal
+    // transaction ID.
+    if (module_exists('commerce_paypal_ec') && !empty($payment_method['settings']['paypal_ec_instance'])) {
+      $transaction->remote_id = $_POST['PPREF'];
+    }
   }
 
   // Store the type of transaction in the remote status.
