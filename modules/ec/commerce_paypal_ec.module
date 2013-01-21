@@ -168,6 +168,7 @@ function commerce_paypal_ec_default_settings() {
     'shipping_prompt' => 1,
     'log' => array('request' => 0, 'response' => 0),
     'ipn_logging' => 'notification',
+    'receiver_emails' => '',
     'show_payment_instructions' => FALSE,
   );
 }
@@ -274,6 +275,12 @@ function commerce_paypal_ec_settings_form($settings = array()) {
       'full_ipn' => t('Log notifications with the full IPN during validation and processing (used for debugging).'),
     ),
     '#default_value' => $settings['ipn_logging'],
+  );
+  $form['receiver_emails'] = array(
+    '#type' => 'textfield',
+    '#title' => t('PayPal receiver e-mail addresses'),
+    '#description' => t('Enter the primary e-mail address for your PayPal account where you receive Express Checkout payments or a comma separated list of valid e-mail addresses.') . '<br />' . t('IPNs that originate from payments made to a PayPal account whose e-mail address is not in this list will not be processed.'),
+    '#default_value' => $settings['receiver_emails'],
   );
   $form['show_payment_instructions'] = array(
     '#type' => 'checkbox',
@@ -584,6 +591,43 @@ function commerce_paypal_ec_redirect_form_submit($order, $payment_method) {
   // Because we need to be able to halt checkout completion if payment fails for
   // some reason, instead of getting and processing Express Checkout payment
   // details in the submission step, we do this in the validate step above.
+}
+
+/**
+ * Payment method callback: validate an IPN based on receiver e-mail address,
+ * price, and other parameters as possible.
+ */
+function commerce_paypal_ec_paypal_ipn_validate($order, $payment_method, $ipn) {
+  // Prepare a trimmed list of receiver e-mail addresses.
+  $receiver_emails = explode(',', $payment_method['settings']['receiver_emails']);
+
+  foreach ($receive_emails as $key => &$email) {
+    $email = trim(strtolower($email));
+  }
+
+  // Return FALSE if the receiver e-mail does not match the one specified by
+  // the payment method instance.
+  if (!in_array(trim(strtolower($ipn['receiver_email'])), $receiver_emails)) {
+    commerce_payment_redirect_pane_previous_page($order);
+    watchdog('commerce_paypal_ec', 'IPN rejected: invalid receiver e-mail specified (@receiver_email); must match a receiver e-mail address configured in the payment method settings.', array('@receiver_email' => $ipn['receiver_email']), WATCHDOG_NOTICE);
+    return FALSE;
+  }
+
+  // Prepare the IPN data for inclusion in the watchdog message if enabled.
+  $ipn_data = '';
+
+  if (!empty($payment_method['settings']['ipn_logging']) &&
+    $payment_method['settings']['ipn_logging'] == 'full_ipn') {
+    $ipn_data = '<pre>' . check_plain(print_r($ipn, TRUE)) . '</pre>';
+  }
+
+  // Log a message including the PayPal transaction ID if available.
+  if (!empty($ipn['txn_id'])) {
+    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number with ID @txn_id.!ipn_data', array('@order_number' => $order->order_number, '@txn_id' => $ipn['txn_id'], '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
+  }
+  else {
+    watchdog('commerce_paypal_wps', 'IPN validated for Order @order_number.!ipn_data', array('@order_number' => $order->order_number, '!ipn_data' => $ipn_data), WATCHDOG_NOTICE);
+  }
 }
 
 /**
