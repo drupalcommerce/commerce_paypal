@@ -154,7 +154,12 @@ function commerce_payflow_link_reference_form($form, &$form_state, $order, $tran
   $form_state['transaction'] = $transaction;
 
   // Load and store the payment method instance for this transaction.
-  $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
+  if ($transaction->data['commerce_payflow']['tender'] == 'P') {
+    $payment_method = commerce_payment_method_instance_load($transaction->data['commerce_payflow']['original_instance']);
+  }
+  else {
+    $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
+  }
   $form_state['payment_method'] = $payment_method;
 
   $balance = commerce_payment_order_balance($order);
@@ -267,11 +272,17 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
   $new_transaction->amount = commerce_currency_decimal_to_amount($amount, $transaction->currency_code);
   $new_transaction->payload[REQUEST_TIME . '-reference'] = $response;
   $new_transaction->remote_id = $response['PNREF'];
-  $new_transaction->remote_status = 'S';
+
+  if ($transaction->data['commerce_payflow']['tender'] == 'P') {
+    $new_transaction->remote_status = 'Completed';
+  }
+  else {
+    $new_transaction->remote_status = 'S';
+  }
 
   $message = array();
 
-  if (intval($response['RESULT']) === 0) {
+  if (isset($response['RESULT']) && intval($response['RESULT']) === 0) {
     drupal_set_message(t('Reference transaction processed successfully.'));
     $message[] = t('Reference transaction from @origid.', array('@origid' => $transaction->remote_id));
 

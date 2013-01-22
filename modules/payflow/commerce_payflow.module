@@ -82,7 +82,9 @@ function commerce_payflow_menu() {
  */
 function commerce_payflow_link_capture_void_access($order, $transaction) {
   // Return FALSE if the transaction isn't for Payflow Link or isn't awaiting capture.
-  if ($transaction->payment_method != 'payflow_link' || $transaction->remote_status != 'A') {
+  $valid_types = array('A', 'Pending');
+
+  if ($transaction->payment_method != 'payflow_link' || !in_array($transaction->remote_status, $valid_types)) {
     return FALSE;
   }
 
@@ -91,7 +93,12 @@ function commerce_payflow_link_capture_void_access($order, $transaction) {
     return FALSE;
   }
 
-// Return FALSE if it is more than 29 days past the original authorization.
+  // Return FALSE if the transaction was created through Express Checkout.
+  if (!empty($transaction->data['commerce_payflow']['tender']) && $transaction->data['commerce_payflow']['tender'] == 'P') {
+    return FALSE;
+  }
+
+  // Return FALSE if it is more than 29 days past the original authorization.
   if (REQUEST_TIME - $transaction->created > 86400 * 29) {
     return FALSE;
   }
@@ -114,15 +121,22 @@ function commerce_payflow_link_capture_void_access($order, $transaction) {
  */
 function commerce_payflow_link_reference_access($order, $transaction) {
   // Return FALSE if the transaction isn't valid for reference transactions:
-  // Sale, Authorization, Delayed Capture, Void, or Credit.
-  $valid_types = array('S', 'A', 'D', 'V', 'C');
+  // Sale, Authorization, Delayed Capture, Void, or Credit. This list includes
+  // both the Payflow Link codes and Express Checkout statuses.
+  $valid_types = array('S', 'A', 'D', 'V', 'C', 'Pending', 'Completed', 'Voided', 'Refunded');
 
-  if ($transaction->payment_method != 'payflow_link' || !in_array($transaction->remote_status, $valid_types)) {
+  if (!in_array($transaction->payment_method, array('payflow_link', 'paypal_ec') )|| !in_array($transaction->remote_status, $valid_types)) {
     return FALSE;
   }
 
   // Return FALSE if the transaction was a failure.
   if ($transaction->status == COMMERCE_PAYMENT_STATUS_FAILURE) {
+    return FALSE;
+  }
+
+  // Return FALSE if the transaction is an Express Checkout transaction that
+  // does not have Payflow data.
+  if ($transaction->payment_method == 'paypal_ec' && empty($transaction->data['commerce_payflow'])) {
     return FALSE;
   }
 
@@ -160,6 +174,11 @@ function commerce_payflow_link_refund_access($order, $transaction) {
   $valid_types = array('S', 'D');
 
   if ($transaction->payment_method != 'payflow_link' || !in_array($transaction->remote_status, $valid_types)) {
+    return FALSE;
+  }
+
+  // Return FALSE if the transaction was created through Express Checkout.
+  if (!empty($transaction->data['commerce_payflow']['tender']) && $transaction->data['commerce_payflow']['tender'] == 'P') {
     return FALSE;
   }
 
@@ -618,6 +637,9 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
     $trxtype = $payment_method['settings']['trxtype'];
   }
 
+  // Store the type of transaction in the remote status.
+  $transaction->remote_status = $trxtype;
+
   $trxtype_name = commerce_payflow_trxtype_name($trxtype);
 
   // Build a meaningful response message.
@@ -713,11 +735,19 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
     // transaction ID.
     if (module_exists('commerce_paypal_ec') && !empty($payment_method['settings']['paypal_ec_instance'])) {
       $transaction->remote_id = $_POST['PPREF'];
+
+      // Also update the remote status to match one expected by PayPal.
+      if (!is_null(commerce_payflow_paypal_remote_status($trxtype))) {
+        $transaction->remote_status = commerce_payflow_paypal_remote_status($trxtype);
+      }
+
+      // Finally set the method_id and instance_id to point to the Express
+      // Checkout instance.
+      $transaction->data['commerce_payflow']['original_instance'] = $payment_method['instance_id'];
+      $transaction->payment_method = 'paypal_ec';
+      $transaction->instance_id = 'paypal_ec|' . $payment_method['settings']['paypal_ec_instance'];
     }
   }
-
-  // Store the type of transaction in the remote status.
-  $transaction->remote_status = $trxtype;
 
   // Set the final message.
   $transaction->message = implode('<br />', $message);
@@ -1321,7 +1351,7 @@ function commerce_payflow_link_result_message($result) {
 }
 
 /**
- * Returns the description of a transaction type for a PayPal payment action.
+ * Returns the description of a transaction type for a Payflow payment action.
  */
 function commerce_payflow_trxtype_name($trxtype) {
   switch ($trxtype) {
@@ -1329,8 +1359,34 @@ function commerce_payflow_trxtype_name($trxtype) {
       return t('Authorization only');
     case 'S':
       return t('Authorization and capture');
+    case 'D':
+      return t('Prior authorization capture');
+    case 'V':
+      return t('Void');
+    case 'C':
+      return t('Refund');
     default:
       return t('Unknown transaction type');
+  }
+}
+
+/**
+ * Returns the PayPal remote status that corresponds to the given Payflow
+ * transaction type.
+ */
+function commerce_payflow_paypal_remote_status($trxtype) {
+  switch ($trxtype) {
+    case 'A':
+      return 'Pending';
+    case 'S':
+    case 'D':
+      return 'Completed';
+    case 'V':
+      return 'Voided';
+    case 'C':
+      return 'Refunded';
+    default:
+      return NULL;
   }
 }
 
