@@ -106,7 +106,7 @@ function commerce_payflow_link_capture_form_submit($form, &$form_state) {
     'CAPTURECOMPLETE' => 'Y',
   );
 
-  // Submit the capture request request to Payflow Pro.
+  // Submit the capture request to Payflow Pro.
   $response = commerce_payflow_api_request($payment_method, 'pro', $nvp, $order);
   $transaction->payload[REQUEST_TIME . '-capture'] = $response;
 
@@ -274,6 +274,7 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
   $new_transaction->remote_id = $response['PNREF'];
 
   if ($transaction->data['commerce_payflow']['tender'] == 'P') {
+    $new_transaction->remote_id = $response['PPREF'];
     $new_transaction->remote_status = 'Completed';
   }
   else {
@@ -414,15 +415,15 @@ function commerce_payflow_link_refund_form($form, &$form_state, $order, $transac
 }
 
 /**
- * Validate handler: check the credit amount before attempting refund request.
+ * Validate handler: check the credit amount before attempting a refund request.
  */
 function commerce_payflow_link_refund_form_validate($form, &$form_state) {
   $transaction = $form_state['transaction'];
   $amount = $form_state['values']['amount'];
 
-  // Ensure a positive numeric amount has been entered for credit.
+  // Ensure a positive numeric amount has been entered for refund.
   if (!is_numeric($amount) || $amount <= 0) {
-    form_set_error('amount', t('You must specify a positive numeric amount to credit.'));
+    form_set_error('amount', t('You must specify a positive numeric amount to refund.'));
   }
 
   // Ensure the amount is less than or equal to the captured amount.
@@ -453,7 +454,7 @@ function commerce_payflow_link_refund_form_submit($form, &$form_state) {
     'AMT' => $amount,
   );
 
-  // Submit the capture request request to Payflow Pro.
+  // Submit the refund request to Payflow Pro.
   $response = commerce_payflow_api_request($payment_method, 'pro', $nvp, $order);
 
   // If the credit succeeded...

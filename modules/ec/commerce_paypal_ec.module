@@ -37,6 +37,19 @@ function commerce_paypal_ec_menu() {
     'file' => 'includes/commerce_paypal_ec.admin.inc',
   );
 
+  // Add a menu item for refunding settled transactions.
+  $items['admin/commerce/orders/%commerce_order/payment/%commerce_payment_transaction/paypal-ec-refund'] = array(
+    'title' => 'Refund',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_paypal_ec_refund_form', 3, 5),
+    'access callback' => 'commerce_paypal_ec_refund_access',
+    'access arguments' => array(3, 5),
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'context' => MENU_CONTEXT_INLINE,
+    'weight' => 4,
+    'file' => 'includes/commerce_paypal_ec.admin.inc',
+  );
+
   return $items;
 }
 
@@ -44,12 +57,12 @@ function commerce_paypal_ec_menu() {
  * Determines access to the prior authorization capture form or void form for
  * Paypal EC credit card transactions.
  *
- * @param object $order
+ * @param $order
  *   The order the transaction is on.
- * @param object $transaction
+ * @param $transaction
  *   The payment transaction object to be captured.
  *
- * @return bool
+ * @return
  *   TRUE or FALSE indicating access.
  */
 function commerce_paypal_ec_capture_void_access($order, $transaction) {
@@ -65,6 +78,37 @@ function commerce_paypal_ec_capture_void_access($order, $transaction) {
 
   // Return FALSE if it is more than 29 days past the original authorization.
   if (REQUEST_TIME - $transaction->created > 86400 * 29) {
+    return FALSE;
+  }
+
+  // Allow access if the user can update payments on this transaction.
+  return commerce_payment_transaction_access('update', $transaction);
+}
+
+/**
+ * Determines access to the refund form for Paypal EC credit card transactions.
+ *
+ * @param $order
+ *   The order the transaction is on.
+ * @param $transaction
+ *   The payment transaction object to be captured.
+ *
+ * @return
+ *   TRUE or FALSE indicating access.
+ */
+function commerce_paypal_ec_refund_access($order, $transaction) {
+  // Return FALSE if the transaction isn't Completed.
+  if ($transaction->payment_method != 'paypal_ec' || $transaction->remote_status != 'Completed') {
+    return FALSE;
+  }
+
+  // Return FALSE if the transaction was not a success.
+  if ($transaction->status != COMMERCE_PAYMENT_STATUS_SUCCESS) {
+    return FALSE;
+  }
+
+  // Return FALSE if it is more than 60 days since the original transaction.
+  if (REQUEST_TIME - $transaction->created > 86400 * 60) {
     return FALSE;
   }
 
