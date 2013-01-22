@@ -53,13 +53,20 @@ function commerce_paypal_ec_review_pane_settings_form($checkout_pane) {
  * final details of the order and provide any final information required.
  *
  */
-function commerce_paypal_ec_review_pane_checkout_form($form, &$form_state, $checkout_pane, $order) {
-  $pane_form = array();
+function commerce_paypal_ec_review_pane_checkout_form(&$form, &$form_state, $checkout_pane, $order) {
+  $form_state['build_info']['files']['pane'] = drupal_get_path('module', 'commerce_paypal_ec') . '/includes/commerce_paypal_ec.checkout_pane.inc';
   $form_state['order'] = $order;
 
-  $form_state['build_info']['files']['pane'] = drupal_get_path('module', 'commerce_paypal_ec') . '/includes/commerce_paypal_ec.checkout_pane.inc';
+  // Adjust the weights of the help text and pane form to appear before the
+  // embedded checkout panes.
+  $form['help']['#weight'] = -10;
+
+  $pane_form = array(
+    '#weight' => -5,
+  );
 
   // Duplicate the review checkout pane's contents.
+
   $pane_form['review'] = array(
     '#theme' => 'commerce_checkout_review',
     '#data' => array(),
@@ -102,7 +109,7 @@ function commerce_paypal_ec_review_pane_checkout_form($form, &$form_state, $chec
 
       // Embed it on this checkout pane if the form returned data.
       if (!empty($embedded_pane_form)) {
-        $pane_form[$embedded_pane_id] = array(
+        $form[$embedded_pane_id] = array(
           '#type' => $embedded_pane['fieldset'] ? 'fieldset' : 'container',
           '#title' => check_plain($embedded_pane['title']),
           '#collapsible' => $embedded_pane['collapsible'],
@@ -114,7 +121,7 @@ function commerce_paypal_ec_review_pane_checkout_form($form, &$form_state, $chec
     }
   }
 
-  $pane_form['pay_now'] = array(
+  $form['pay_now'] = array(
     '#type' => 'submit',
     '#value' => t('Pay Now'),
     '#validate' => array('commerce_paypal_ec_review_pane_checkout_form_validate'),
@@ -139,27 +146,15 @@ function commerce_paypal_ec_review_pane_checkout_form_validate($form, &$form_sta
     // Load the checkout pane to find its checkout pane validate callback.
     $embedded_checkout_pane = commerce_checkout_pane_load($embedded_pane_id);
 
-    // Create a copy of the form and form state with the embedded checkout pane
-    // array elements at the root level.
-    $form_copy = $form;
-    $form_copy[$embedded_pane_id] = $form['paypal_ec_review'][$embedded_pane_id];
-    $form_state_copy = $form_state;
-    $form_state_copy['values'][$embedded_pane_id] = $form_state['values']['paypal_ec_review'][$embedded_pane_id];
-
     // If it has a validate callback.
     if ($callback = commerce_checkout_pane_callback($embedded_checkout_pane, 'checkout_form_validate')) {
       // Give it a chance to process the submitted data.
-      $embedded_pane_validate &= $callback($form_copy, $form_state_copy, $embedded_checkout_pane, $order);
+      $embedded_pane_validate &= $callback($form, $form_state, $embedded_checkout_pane, $order);
     }
 
     // Submit the pane if it validated.
     if ($embedded_pane_validate && $callback = commerce_checkout_pane_callback($embedded_checkout_pane, 'checkout_form_submit')) {
-      $callback($form_copy, $form_state_copy, $embedded_checkout_pane, $order);
-    }
-
-    // If a callback triggered a rebuild, push it to the original form state.
-    if (!empty($form_state_copy['rebuild'])) {
-      $form_state['rebuild'] = $form_state_copy['rebuild'];
+      $callback($form, $form_state, $embedded_checkout_pane, $order);
     }
 
     // A failed pane makes the form fail.
