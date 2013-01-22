@@ -183,6 +183,7 @@ function commerce_paypal_ec_commerce_payment_method_info() {
 
   $payment_methods['paypal_ec'] = array(
     'base' => 'commerce_paypal_ec',
+    'buttonsource' => 'CommerceGuys_Cart_EC',
     'title' => t('PayPal Express Checkout'),
     'short_title' => t('PayPal EC'),
     'description' => t('PayPal Express Checkout'),
@@ -932,6 +933,7 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
     'METHOD' => 'DoExpressCheckoutPayment',
     'TOKEN' => $order->data['commerce_paypal_ec']['token'],
     'PAYERID' => $order->data['commerce_paypal_ec']['payerid'],
+    'BUTTONSOURCE' => $payment_method['buttonsource'],
     'PAYMENTREQUEST_0_AMT' => commerce_paypal_price_amount($amount, $currency_code),
     'PAYMENTREQUEST_0_CURRENCYCODE' => $currency_code,
     'PAYMENTREQUEST_0_INVNUM' => commerce_paypal_ipn_invoice($order),
