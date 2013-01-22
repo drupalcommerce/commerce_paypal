@@ -798,6 +798,11 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
         break;
     }
   }
+
+  // Alter the Completion checkout page form for Payflow Link.
+  if ($form_id == 'commerce_checkout_form_complete' && !empty($form_state['order']->data['commerce_payflow_link'])) {
+    $form['#attached']['js'][] = drupal_get_path('module', 'commerce_payflow') . '/commerce_payflow.js';
+  }
 }
 
 /**
