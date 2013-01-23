@@ -215,6 +215,13 @@ function commerce_payflow_commerce_payment_method_info() {
     'offsite_autoredirect' => FALSE,
   );
 
+  // Note that the PayPal Payments Advanced payment method uses the same 'base'
+  // value as Payflow Link. These are the same service offered by PayPal, they
+  // just offer US merchants the ability to use Payflow Link with PayPal as the
+  // payment processor and call it PayPal Payments Advanced. We reuse the same
+  // code for these two methods .with the exception of a thin wrapper around the
+  // settings form. This means data from PPA transactions may be stored in
+  // variables as payflow_link data, but it's all one and the same.
   $payment_methods['paypal_ppa'] = array(
     'base' => 'commerce_payflow_link',
     'buttonsource' => 'CommerceGuys_Cart_PPA',
@@ -411,7 +418,7 @@ function commerce_payflow_link_settings_form($settings = array()) {
  */
 function commerce_paypal_ppa_settings_form($settings = array()) {
   // Grab the default Payflow Link settings.
-  $settings = commerce_payflow_link_default_settings();
+  $settings += commerce_payflow_link_default_settings();
 
   // Ensure the default currency code is PPA compatible.
   if (!in_array($settings['currency_code'], array_keys(commerce_paypal_currencies('paypal_ppa')))) {
