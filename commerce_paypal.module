@@ -133,6 +133,9 @@ function commerce_paypal_process_ipn($payment_method = NULL, $debug_ipn = array(
   if (!empty($ipn['invoice']) && strpos($ipn['invoice'], '-') !== FALSE) {
     list($ipn['order_id'], $timestamp) = explode('-', $ipn['invoice']);
   }
+  elseif (!empty($ipn['invoice'])) {
+    $ipn['order_id'] = $ipn['invoice'];
+  }
   else {
     $ipn['order_id'] = 0;
     $timestamp = 0;

@@ -107,7 +107,7 @@ function commerce_paypal_ec_capture_form_submit($form, &$form_state) {
     'AMT' => commerce_paypal_price_amount($amount, $order_total['currency_code']),
     'CURRENCYCODE' => $order_total['currency_code'],
     'COMPLETETYPE' => $order_total['amount'] != $amount ? 'NotComplete' : 'Complete',
-    'INVNUM' => $order->order_id,
+    'INVNUM' => commerce_paypal_ipn_invoice($order->order_id),
   );
 
   // Submit the capture request to Paypal.
