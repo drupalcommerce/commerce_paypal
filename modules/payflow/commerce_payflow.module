@@ -84,7 +84,7 @@ function commerce_payflow_link_capture_void_access($order, $transaction) {
   // Return FALSE if the transaction isn't for Payflow Link or isn't awaiting capture.
   $valid_types = array('A', 'Pending');
 
-  if ($transaction->payment_method != 'payflow_link' || !in_array($transaction->remote_status, $valid_types)) {
+  if (!in_array($transaction->payment_method, array('payflow_link', 'paypal_ppa')) || !in_array($transaction->remote_status, $valid_types)) {
     return FALSE;
   }
 
@@ -125,7 +125,8 @@ function commerce_payflow_link_reference_access($order, $transaction) {
   // both the Payflow Link codes and Express Checkout statuses.
   $valid_types = array('S', 'A', 'D', 'V', 'C', 'Pending', 'Completed', 'Voided', 'Refunded');
 
-  if (!in_array($transaction->payment_method, array('payflow_link', 'paypal_ec') )|| !in_array($transaction->remote_status, $valid_types)) {
+  if (!in_array($transaction->payment_method, array('payflow_link', 'paypal_ppa', 'paypal_ec')) ||
+    !in_array($transaction->remote_status, $valid_types)) {
     return FALSE;
   }
 
@@ -173,7 +174,8 @@ function commerce_payflow_link_refund_access($order, $transaction) {
   // Sale or Delayed Capture.
   $valid_types = array('S', 'D');
 
-  if ($transaction->payment_method != 'payflow_link' || !in_array($transaction->remote_status, $valid_types)) {
+  if (!in_array($transaction->payment_method, array('payflow_link', 'paypal_ppa')) ||
+    !in_array($transaction->remote_status, $valid_types)) {
     return FALSE;
   }
 
@@ -213,6 +215,20 @@ function commerce_payflow_commerce_payment_method_info() {
     'offsite_autoredirect' => FALSE,
   );
 
+  $payment_methods['paypal_ppa'] = array(
+    'base' => 'commerce_payflow_link',
+    'buttonsource' => 'CommerceGuys_Cart_PPA',
+    'title' => t('PayPal Payments Advanced'),
+    'short_title' => t('PayPal Payments Advanced'),
+    'description' => t('PayPal Payments Advanced Hosted Checkout Pages'),
+    'terminal' => FALSE,
+    'offsite' => TRUE,
+    'offsite_autoredirect' => FALSE,
+    'callbacks' => array(
+      'settings_form' => 'commerce_paypal_ppa_settings_form',
+    ),
+  );
+
   return $payment_methods;
 }
 
@@ -231,7 +247,7 @@ function commerce_payflow_link_default_settings() {
     'trxtype' => 'S',
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('payflow_link'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
-    'redirect_mode' => 'get',
+    'redirect_mode' => 'iframe',
     'paypal_ec_instance' => '',
     'paypal_ec_disable' => TRUE,
     'ba_desc' => '',
@@ -391,6 +407,26 @@ function commerce_payflow_link_settings_form($settings = array()) {
 }
 
 /**
+ * Payment method callback: settings form.
+ */
+function commerce_paypal_ppa_settings_form($settings = array()) {
+  // Grab the default Payflow Link settings.
+  $settings = commerce_payflow_link_default_settings();
+
+  // Ensure the default currency code is PPA compatible.
+  if (!in_array($settings['currency_code'], array_keys(commerce_paypal_currencies('paypal_ppa')))) {
+    $settings['currency_code'] = 'USD';
+  }
+
+  $form = commerce_payflow_link_settings_form($settings);
+
+  $form['currency_code']['#options'] = commerce_paypal_currencies('paypal_ppa');
+  $form['show_payment_instructions']['#title'] = t('Show a message on the checkout form when PayPal Payments Advanced is selected telling the customer to "Continue with checkout to complete payment via PayPal."');
+
+  return $form;
+}
+
+/**
  * Payment method callback: adds a message to the submission form if enabled in
  * the payment method settings.
  */
@@ -398,8 +434,10 @@ function commerce_payflow_link_submit_form($payment_method, $pane_values, $check
   $form = array();
 
   if (!empty($payment_method['settings']['show_payment_instructions'])) {
-    $form['payflow_link_information'] = array(
-      '#markup' => '<span class="commerce-payflow-link-info">' . t('(Continue with checkout to complete payment via PayPal.)') . '</span>',
+    $class = ($payment_method['method_id'] == 'payflow_link') ? 'commerce-payflow-link-info' : 'commerce-paypal-pa-info';
+
+    $form[$payment_method['method_id'] . '_information'] = array(
+      '#markup' => '<span class="' . $class . '">' . t('(Continue with checkout to complete payment via PayPal.)') . '</span>',
     );
   }
 
@@ -413,7 +451,7 @@ function commerce_payflow_link_submit_form_validate($payment_method, $pane_form,
   // Return an error if the enabling action's settings haven't been configured.
   foreach (array('partner', 'vendor', 'user', 'password') as $key) {
     if (empty($payment_method['settings'][$key])) {
-      drupal_set_message(t('Payflow Link is not configured for use. Please contact an administrator to resolve this issue.'), 'error');
+      drupal_set_message(t('@title is not configured for use. Please contact an administrator to resolve this issue.', array('@title' => $payment_method['title'])), 'error');
       return FALSE;
     }
   }
@@ -471,7 +509,7 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
 
     // Show an error message and go back a page.
     drupal_set_message(t('Redirect to PayPal failed. Please try again or contact an administrator to resolve the issue.'), 'error');
-    commerce_payment_redirect_pane_previous_page($order, t('Redirect to Payflow Link Hosted Checkout failed.'));
+    commerce_payment_redirect_pane_previous_page($order, t('Redirect to @description failed.', array('@description' => $payment_method['description'])));
   }
   elseif (!in_array(arg(3), array('back', 'return'))) {
     // Otherwise determine how to process the redirect based on the payment
@@ -487,7 +525,7 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
         $form['#action'] = commerce_payflow_link_server_url($mode);
 
         // Store the Payflow payment method instance in the form array.
-        $form['payflow_link'] = array(
+        $form['commerce_payflow_payment_method'] = array(
           '#type' => 'value',
           '#value' => $payment_method,
         );
@@ -523,7 +561,7 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
       // In iframe mode, embed the Payflow checkout page into the Payment page.
       case 'iframe':
         // Store the Payflow payment method instance in the form array.
-        $form['payflow_link'] = array(
+        $form['commerce_payflow_payment_method'] = array(
           '#type' => 'value',
           '#value' => $payment_method,
         );
@@ -574,13 +612,13 @@ function commerce_payflow_link_redirect_form_validate($order, $payment_method) {
     // the charge if it's supported by PayPal if that option is enabled.
     $currency_code = $payment_method['settings']['currency_code'];
 
-    if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies('payflow_link')))) {
+    if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies($payment_method['method_id'])))) {
       $currency_code = $order_total['currency_code'];
     }
 
     // Provide a more descriptive error message in the failed transaction and
     // the watchdog.
-    $transaction = commerce_payment_transaction_new('payflow_link', $order->order_id);
+    $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
     $transaction->instance_id = $payment_method['instance_id'];
     $transaction->amount = commerce_currency_decimal_to_amount($_POST['AMT'], $currency_code);
     $transaction->currency_code = $currency_code;
@@ -609,7 +647,7 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   else {
     $currency_code = $payment_method['settings']['currency_code'];
 
-    if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies('payflow_link')))) {
+    if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies($payment_method['method_id'])))) {
       $currency_code = $order_total['currency_code'];
     }
   }
@@ -618,7 +656,7 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   $amount = commerce_currency_convert($order_total['amount'], $order_total['currency_code'], $currency_code);
 
   // Prepare a transaction object to log the API response.
-  $transaction = commerce_payment_transaction_new('payflow_link', $order->order_id);
+  $transaction = commerce_payment_transaction_new($payment_method['method_id'], $order->order_id);
   $transaction->instance_id = $payment_method['instance_id'];
   $transaction->amount = commerce_currency_decimal_to_amount($_POST['AMT'], $currency_code);
   $transaction->currency_code = $currency_code;
@@ -771,7 +809,7 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
       list($method_id, $rule_name) = explode('|', $key);
 
       // If we find Payflow Link, include its CSS on the form and exit the loop.
-      if ($method_id == 'payflow_link') {
+      if (in_array($method_id, array('payflow_link', 'paypal_ppa'))) {
         $payflow_link = TRUE;
         $value = t('Credit card, debit card, or PayPal:') . ' ' . implode(' ', $icons);
 
@@ -815,8 +853,8 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
   }
 
   // Alter the Payment checkout page form for Payflow Link.
-  if ($form_id == 'commerce_checkout_form_payment' && !empty($form['payflow_link'])) {
-    switch ($form['payflow_link']['#value']['settings']['redirect_mode']) {
+  if ($form_id == 'commerce_checkout_form_payment' && !empty($form['commerce_payflow_payment_method'])) {
+    switch ($form['commerce_payflow_payment_method']['#value']['settings']['redirect_mode']) {
       // Display the automatic redirection for POST redirects.
       case 'post':
         $form['help']['#markup'] = '<div class="checkout-help">' . t('Please wait while you are redirected to the payment server. If nothing happens within 10 seconds, please click on the button below.') . '</div>';
@@ -861,7 +899,7 @@ function commerce_payflow_link_create_secure_token($payment_method, $order, $bil
     $currency_code = $payment_method['settings']['currency_code'];
     $order_currency_code = $order_total['currency_code'];
 
-    if (!empty($settings['allow_supported_currencies']) && in_array($order_currency_code, array_keys(commerce_paypal_currencies('payflow_link')))) {
+    if (!empty($settings['allow_supported_currencies']) && in_array($order_currency_code, array_keys(commerce_paypal_currencies('paypal_ppa')))) {
       $currency_code = $order_currency_code;
     }
   }
@@ -1230,7 +1268,8 @@ function commerce_payflow_link_hosted_checkout_url($payment_method, $order) {
  *   The iframe HTML to use to embed Payflow's Hosted Checkout page on-site.
  */
 function commerce_payflow_link_hosted_checkout_iframe($payment_method, $order) {
-  return '<iframe src="' . commerce_payflow_link_hosted_checkout_url($payment_method, $order) . '" name="embedded-payflow-link" scrolling="no" frameborder="0" width="490px" height="565px"></iframe>';
+  $name = ($payment_method['method_id'] == 'payflow_link') ? 'embedded-payflow-link' : 'embedded-paypal-ppa';
+  return '<iframe src="' . commerce_payflow_link_hosted_checkout_url($payment_method, $order) . '" name="' . $name . '" scrolling="no" frameborder="0" width="490px" height="565px"></iframe>';
 }
 
 /**
@@ -1269,7 +1308,7 @@ function commerce_payflow_link_result_message($result) {
     case 1:
     case 5:
     case 26:
-      return t('Payflow Link is not configured for use. Please contact an administrator to resolve this issue.');
+      return t('The Payflow hosted checkout page is not configured for use. Please contact an administrator to resolve this issue.');
     case 2:
     case 25:
       return t('You have attempted to use an invalid payment method. Please check your payment information and try again.');
