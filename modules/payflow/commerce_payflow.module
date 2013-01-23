@@ -468,7 +468,7 @@ function commerce_payflow_link_submit_form_submit($payment_method, $pane_form, $
 
   // Generate a payment redirect key and Secure Token ID.
   $order->data['payment_redirect_key'] = drupal_hash_base64(time());
-  $order->data['commerce_payflow_link'] = array(
+  $order->data['commerce_payflow'] = array(
     'tokenid' => str_replace('.', '', uniqid('', TRUE)),
   );
 
@@ -485,7 +485,7 @@ function commerce_payflow_link_submit_form_submit($payment_method, $pane_form, $
   // If we got one back...
   if (!empty($token)) {
     // Set the Payflow Link data array and proceed to the redirect page.
-    $order->data['commerce_payflow_link']['token'] = $token;
+    $order->data['commerce_payflow']['token'] = $token;
     return TRUE;
   }
   else {
@@ -502,10 +502,10 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
   $mode = $payment_method['settings']['mode'];
 
   // If we didn't get a valid redirect token...
-  if (empty($order->data['commerce_payflow_link']['token'])) {
+  if (empty($order->data['commerce_payflow']['token'])) {
     // Clear the payment related information from the data array.
     unset($order->data['payment_method']);
-    unset($order->data['commerce_payflow_link']);
+    unset($order->data['commerce_payflow']);
 
     // Show an error message and go back a page.
     drupal_set_message(t('Redirect to PayPal failed. Please try again or contact an administrator to resolve the issue.'), 'error');
@@ -532,8 +532,8 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
 
         // Add the Secure Token and Secure Token ID from the order's data array.
         $data = array(
-          'SECURETOKEN' => $order->data['commerce_payflow_link']['token'],
-          'SECURETOKENID' => $order->data['commerce_payflow_link']['tokenid'],
+          'SECURETOKEN' => $order->data['commerce_payflow']['token'],
+          'SECURETOKENID' => $order->data['commerce_payflow']['tokenid'],
         );
 
         // If the payment method is in test mode, add the appropriate parameter.
@@ -581,7 +581,7 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
  */
 function commerce_payflow_link_redirect_form_back($order, $payment_method) {
   // Remove the payment information from the order data array.
-  unset($order->data['commerce_payflow_link']);
+  unset($order->data['commerce_payflow']);
   unset($order->data['payment_method']);
 }
 
@@ -868,7 +868,7 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
   }
 
   // Alter the Completion checkout page form for Payflow Link.
-  if ($form_id == 'commerce_checkout_form_complete' && !empty($form_state['order']->data['commerce_payflow_link'])) {
+  if ($form_id == 'commerce_checkout_form_complete' && !empty($form_state['order']->data['commerce_payflow'])) {
     $form['#attached']['js'][] = drupal_get_path('module', 'commerce_payflow') . '/commerce_payflow.js';
   }
 }
@@ -924,7 +924,7 @@ function commerce_payflow_link_create_secure_token($payment_method, $order, $bil
   $nvp = array(
     // Request a secure token using our order's token ID.
     'CREATESECURETOKEN' => 'Y',
-    'SECURETOKENID' => $order->data['commerce_payflow_link']['tokenid'],
+    'SECURETOKENID' => $order->data['commerce_payflow']['tokenid'],
 
     // Indicate the type and amount of the transaction.
     'TRXTYPE' => $payment_method['settings']['trxtype'],
@@ -1243,8 +1243,8 @@ function commerce_payflow_link_hosted_checkout_url($payment_method, $order) {
 
   // Build a query array using information from the order object.
   $query = array(
-    'SECURETOKEN' => $order->data['commerce_payflow_link']['token'],
-    'SECURETOKENID' => $order->data['commerce_payflow_link']['tokenid'],
+    'SECURETOKEN' => $order->data['commerce_payflow']['token'],
+    'SECURETOKENID' => $order->data['commerce_payflow']['tokenid'],
   );
 
   // Set the MODE parameter if the URL is for the test server.
