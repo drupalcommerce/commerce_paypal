@@ -705,6 +705,16 @@ function commerce_paypal_ec_paypal_ipn_process($order, $payment_method, &$ipn) {
     }
   }
   elseif (in_array($ipn['payment_status'], array('Failed', 'Refunded'))) {
+    // Ensure there isn't already an existing corresponding transaction.
+    $transaction = commerce_paypal_payment_transaction_load($ipn['txn_id']);
+
+    // If so, bail now because the refund transaction was created by the Express
+    // Checkout API request itself.
+    if ($transaction) {
+      watchdog('commerce_paypal_ec', 'IPN for Order @order_number ignored: refund transaction already created.', array('@order_number' => $order->order_number), WATCHDOG_NOTICE);
+      return FALSE;
+    }
+
     // Otherwise if this is a failed bank payment or refund, create a new
     // payment transaction to log it to the order.
     $transaction = commerce_payment_transaction_new('paypal_ec', $order->order_id);
