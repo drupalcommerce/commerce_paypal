@@ -1067,22 +1067,40 @@ function commerce_paypal_ec_itemize_order($order, $currency_code) {
     // If the current line item is a shipping line item, track its amount value
     // without taxes separately from products.
     if (module_exists('commerce_shipping') && $line_item_wrapper->type->value() == 'shipping') {
-      // Extract the unit price and the amount of taxes it contains.
+      // Extract the unit price and the amount of non-display inclusive taxes it
+      // contains (i.e. sales tax).
       $shipping_price = $line_item_wrapper->commerce_unit_price->value();
+      $shipping_tax = commerce_tax_total_amount($shipping_price['data']['components'], FALSE, $currency_code);
 
-      // Track the total costs of all shipping line items on an order, though
-      // typically this should be limited to one shipping line item per order.
-      $shippingamt += $shipping_price['amount'];
+      // If the shipping line item has sales tax on it...
+      if ($shipping_tax > 0) {
+        // Add it to the payment request as a line item to properly represent
+        // the shipping amount differentiated from the tax amount.
+        $l_amt = commerce_currency_convert($shipping_price['amount'], $shipping_price['currency_code'], $currency_code);
+
+        $nvp += array(
+          'L_PAYMENTREQUEST_0_NAME' . $i => commerce_line_item_title($line_item_wrapper->value()),
+          'L_PAYMENTREQUEST_0_AMT' . $i => commerce_paypal_price_amount($l_amt, $currency_code),
+          'L_PAYMENTREQUEST_0_TAXAMT' . $i => commerce_paypal_price_amount($shipping_tax, $currency_code),
+          'L_PAYMENTREQUEST_0_QTY' . $i => round($line_item_wrapper->quantity->value()),
+        );
+      }
+      else {
+        // Otherwise track the total costs of all shipping line items on the
+        // order to add to the final payment request as a single amount, though
+        // typically this should be limited to one shipping line item per order.
+        $shippingamt += $shipping_price['amount'];
+      }
     }
     else {
       // Extract the line item unit price value array.
       $unit_price = $line_item_wrapper->commerce_unit_price->value();
 
-      // Determine the amount of tax included in this line item.
+      // Determine the amount of non-display inclusive tax included in this line
+      // item (i.e. sales tax).
       $l_taxamt = commerce_tax_total_amount($unit_price['data']['components'], FALSE, $currency_code);
 
-      // Calculate the cost as the unit price minus the tax amount and add it to
-      // the running total for the order.
+      // Convert the unit price to the propery currency.
       $l_amt = commerce_currency_convert($unit_price['amount'], $unit_price['currency_code'], $currency_code);
 
       // Add payment details line items.
@@ -1111,12 +1129,15 @@ function commerce_paypal_ec_itemize_order($order, $currency_code) {
   // total instead of tallying it from each line item.
   $taxamt = commerce_round(COMMERCE_ROUND_HALF_UP, commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code));
 
-  // Add payment details line items.
+  // Add the total item and tax amounts to the payment request
   $nvp += array(
     'PAYMENTREQUEST_0_ITEMAMT' => commerce_paypal_price_amount($amt - $taxamt - $shippingamt, $currency_code),
     'PAYMENTREQUEST_0_TAXAMT' => commerce_paypal_price_amount($taxamt, $currency_code),
-    'PAYMENTREQUEST_0_SHIPPINGAMT' => commerce_paypal_price_amount($shippingamt, $currency_code),
   );
+
+  if ($shippingamt > 0) {
+    $nvp['PAYMENTREQUEST_0_SHIPPINGAMT'] = commerce_paypal_price_amount($shippingamt, $currency_code);
+  }
 
   return $nvp;
 }
