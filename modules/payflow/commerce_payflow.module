@@ -1051,9 +1051,6 @@ function commerce_payflow_link_itemize_order($order, $currency_code) {
     // Extract the unit price total value array.
     $unit_price = $line_item_wrapper->commerce_unit_price->value();
 
-    // Determine the amount of tax included in this line item.
-    $l_taxamt = commerce_tax_total_amount($unit_price['data']['components'], FALSE, $currency_code);
-
     // Calculate the cost as the unit price minus the tax amount and add it to
     // the running total for the order.
     $l_cost = commerce_currency_convert($unit_price['amount'], $unit_price['currency_code'], $currency_code);
@@ -1062,7 +1059,6 @@ function commerce_payflow_link_itemize_order($order, $currency_code) {
     $nvp += array(
       'L_NAME' . $i => commerce_line_item_title($line_item_wrapper->value()),
       'L_COST' . $i => commerce_paypal_price_amount($l_cost, $currency_code),
-      'L_TAXAMT' . $i => commerce_paypal_price_amount($l_taxamt, $currency_code),
       'L_QTY' . $i => round($line_item_wrapper->quantity->value()),
     );
 
