@@ -1034,7 +1034,7 @@ function commerce_payflow_link_itemize_order($order, $currency_code) {
   // Determine the order level item amount and tax amount line items. To prevent
   // rounding problems getting in the way, we calculate them based on the order
   // total instead of tallying it from each line item.
-  $taxamt = commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code);
+  $taxamt = commerce_round(COMMERCE_ROUND_HALF_UP, commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code));
 
   // Add payment details line items.
   $nvp += array(

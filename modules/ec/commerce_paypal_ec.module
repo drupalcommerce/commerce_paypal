@@ -1069,11 +1069,10 @@ function commerce_paypal_ec_itemize_order($order, $currency_code) {
     if (module_exists('commerce_shipping') && $line_item_wrapper->type->value() == 'shipping') {
       // Extract the unit price and the amount of taxes it contains.
       $shipping_price = $line_item_wrapper->commerce_unit_price->value();
-      $shipping_tax = commerce_tax_total_amount($shipping_price['data']['components'], FALSE, $currency_code);
 
       // Track the total costs of all shipping line items on an order, though
       // typically this should be limited to one shipping line item per order.
-      $shippingamt += $shipping_price['amount'] - $shipping_tax;
+      $shippingamt += $shipping_price['amount'];
     }
     else {
       // Extract the line item unit price value array.
@@ -1110,7 +1109,7 @@ function commerce_paypal_ec_itemize_order($order, $currency_code) {
   // Determine the order level item amount and tax amount line items. To prevent
   // rounding problems getting in the way, we calculate them based on the order
   // total instead of tallying it from each line item.
-  $taxamt = commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code);
+  $taxamt = commerce_round(COMMERCE_ROUND_HALF_UP, commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code));
 
   // Add payment details line items.
   $nvp += array(
