@@ -340,6 +340,10 @@ function commerce_paypal_ec_settings_form($settings = array()) {
  * Implements hook_form_alter().
  */
 function commerce_paypal_ec_form_alter(&$form, &$form_state, $form_id) {
+  if (!is_string($form_id)) {
+    return;
+  }
+
   // If we're altering a shopping cart form and PayPal EC is enabled...
   if (strpos($form_id, 'views_form_commerce_cart_form_') === 0 && commerce_paypal_ec_enabled()) {
     // If the cart form View shows line items...
