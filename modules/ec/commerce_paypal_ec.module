@@ -266,10 +266,10 @@ function commerce_paypal_ec_settings_form($settings = array()) {
   );
   $form['txn_type'] = array(
     '#type' => 'radios',
-    '#title' => t('Default credit card transaction type'),
+    '#title' => t('Default transaction type'),
     '#description' => t('The default will be used to process transactions during checkout.'),
     '#options' => array(
-      COMMERCE_CREDIT_AUTH_CAPTURE => t('Authorization and capture'),
+      COMMERCE_CREDIT_AUTH_CAPTURE => t("Sale (direct debit from the customer's PayPal account)"),
       COMMERCE_CREDIT_AUTH_ONLY => t('Authorization only (requires manual or automated capture after checkout)'),
     ),
     '#default_value' => $settings['txn_type'],
@@ -280,8 +280,8 @@ function commerce_paypal_ec_settings_form($settings = array()) {
     '#description' => t('Express Checkout Account Optional (ECAO) where PayPal accounts are not required for payment may not be available in all markets.'),
     '#options' => array(
       'Mark' => t('Require a PayPal account (this is the standard configuration).'),
-      'SoleLogin' => t('Do not require a PayPal account but default to the PayPal login form.'),
-      'SoleBilling' => t('Do not require a PayPal account and default to the billing form.'),
+      'SoleLogin' => t('Allow PayPal or credit card payments, defaulting to the PayPal form.'),
+      'SoleBilling' => t('Allow PayPal or credit card payments, defaulting to the credit card form.'),
     ),
     '#default_value' => $settings['ec_mode'],
   );
