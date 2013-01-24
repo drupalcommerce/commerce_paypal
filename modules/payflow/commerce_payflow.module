@@ -254,6 +254,7 @@ function commerce_payflow_link_default_settings() {
     'trxtype' => 'S',
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('payflow_link'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
+    'payment_icons' => drupal_map_assoc(array_keys(array_diff_key(commerce_paypal_payment_methods(), array('echeck' => '')))),
     'redirect_mode' => 'iframe',
     'cancel_link' => TRUE,
     'paypal_ec_instance' => '',
@@ -342,6 +343,13 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
     '#title' => t('Allow transactions to use any currency in the options list above.'),
     '#description' => t('Transactions in unsupported currencies will still be converted into the default currency.'),
     '#default_value' => $settings['allow_supported_currencies'],
+  );
+  $form['payment_icons'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Payment option icons to show on the checkout form'),
+    '#description' => t('Your payment processor and @title account settings may limit which of these payment options are actually available on the payment form.', array('@title' => $payment_method['title'])),
+    '#options' => array_diff_key(commerce_paypal_payment_methods(), array('echeck' => '')),
+    '#default_value' => $settings['payment_icons'],
   );
   $form['redirect_mode'] = array(
     '#type' => 'radios',
@@ -819,21 +827,27 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
   if (strpos($form_id, 'commerce_checkout_form_') === 0 && !empty($form['commerce_payment']['payment_method'])) {
     $payflow_link = FALSE;
 
-    // Prepare an icons array that excludes eCheck as an option.
-    $icons = array_diff_key(commerce_paypal_icons(), array('echeck' => ''));
-
     foreach ($form['commerce_payment']['payment_method']['#options'] as $key => &$value) {
       list($method_id, $rule_name) = explode('|', $key);
 
       // If we find Payflow Link, include its CSS on the form and exit the loop.
       if (in_array($method_id, array('payflow_link', 'paypal_ppa'))) {
+        $payment_method = commerce_payment_method_instance_load($key);
+        $payment_icons = array_values($payment_method['settings']['payment_icons']);
         $payflow_link = TRUE;
-        $value = t('Credit card, debit card, or PayPal:') . ' ' . implode(' ', $icons);
+
+        // Prepare an icons array that only includes enabled icons.
+        $icons = commerce_paypal_icons($payment_icons);
+
+        if (in_array('paypal', $payment_icons, TRUE)) {
+          $value = t('Credit card, debit card, or PayPal:') . ' ' . implode(' ', $icons);
+        }
+        else {
+          $value = t('Credit card or debit card:') . ' ' . implode(' ', $icons);
+        }
 
         // Check to see if we should disable a corresponding Express Checkout
         // payment method option.
-        $payment_method = commerce_payment_method_instance_load($key);
-
         if (!empty($payment_method['settings']['paypal_ec_disable']) && !empty($payment_method['settings']['paypal_ec_instance'])) {
           $ec_instance_id = 'paypal_ec|' . $payment_method['settings']['paypal_ec_instance'];
 

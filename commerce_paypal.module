@@ -587,16 +587,10 @@ function commerce_paypal_short_pending_reason($pendingreason) {
 }
 
 /**
- * Returns an array of PayPal payment method icon img elements.
- *
- * @return
- *   The array of themed payment method icons keyed by name: visa, mastercard,
- *   amex, discover, echeck, paypal
+ * Returns an array of PayPal payment methods.
  */
-function commerce_paypal_icons() {
-  $icons = array();
-
-  $payment_methods = array(
+function commerce_paypal_payment_methods() {
+  return array(
     'visa' => t('Visa'),
     'mastercard' => t('Mastercard'),
     'amex' => t('American Express'),
@@ -604,17 +598,34 @@ function commerce_paypal_icons() {
     'echeck' => t('eCheck'),
     'paypal' => t('PayPal'),
   );
+}
 
-  foreach ($payment_methods as $name => $title) {
-    $variables = array(
-      'path' => drupal_get_path('module', 'commerce_paypal') . '/images/' . $name . '.gif',
-      'title' => $title,
-      'alt' => $title,
-      'attributes' => array(
-        'class' => array('commerce-paypal-icon'),
-      ),
-    );
-    $icons[$name] = theme('image', $variables);
+/**
+ * Returns an array of PayPal payment method icon img elements.
+ *
+ * @param $methods
+ *   An array of PayPal payment method names to include in the icons array; if
+ *   empty, all icons will be returned.
+ *
+ * @return
+ *   The array of themed payment method icons keyed by name: visa, mastercard,
+ *   amex, discover, echeck, paypal
+ */
+function commerce_paypal_icons($methods = array()) {
+  $icons = array();
+
+  foreach (commerce_paypal_payment_methods() as $name => $title) {
+    if (empty($methods) || in_array($name, $methods, TRUE)) {
+      $variables = array(
+        'path' => drupal_get_path('module', 'commerce_paypal') . '/images/' . $name . '.gif',
+        'title' => $title,
+        'alt' => $title,
+        'attributes' => array(
+          'class' => array('commerce-paypal-icon'),
+        ),
+      );
+      $icons[$name] = theme('image', $variables);
+    }
   }
 
   return $icons;
