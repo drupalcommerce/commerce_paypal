@@ -12,15 +12,10 @@
 function commerce_paypal_wps_commerce_payment_method_info() {
   $payment_methods = array();
 
-  $icons = commerce_paypal_icons();
-  $display_title = t('!logo PayPal - pay securely without sharing your financial information', array('!logo' => $icons['paypal']));
-  $display_title .= '<div class="commerce-paypal-icons"><span class="label">' . t('Includes:') . '</span>' . implode(' ', $icons) . '</div>';
-
   $payment_methods['paypal_wps'] = array(
     'base' => 'commerce_paypal_wps',
     'title' => t('PayPal WPS'),
     'short_title' => t('PayPal'),
-    'display_title' => $display_title,
     'description' => t('PayPal Website Payments Standard'),
     'terminal' => FALSE,
     'offsite' => TRUE,
@@ -149,12 +144,19 @@ function commerce_paypal_wps_form_commerce_checkout_form_alter(&$form, &$form_st
   // If this checkout form contains the payment method radios...
   if (!empty($form['commerce_payment']['payment_method']['#options'])) {
     // Loop over its options array looking for a PayPal WPS option.
-    foreach (array_keys($form['commerce_payment']['payment_method']['#options']) as $key) {
+    foreach ($form['commerce_payment']['payment_method']['#options'] as $key => &$value) {
       list($method_id, $rule_name) = explode('|', $key);
 
-      // If we find PayPal WPS, include its CSS on the form and exit the loop.
+      // If we find PayPal WPS...
       if ($method_id == 'paypal_wps') {
+        // Prepare the replacement radio button text with icons.
+        $icons = commerce_paypal_icons();
+        $value = t('!logo PayPal - pay securely without sharing your financial information', array('!logo' => $icons['paypal']));
+        $value .= '<div class="commerce-paypal-icons"><span class="label">' . t('Includes:') . '</span>' . implode(' ', $icons) . '</div>';
+
+        // Add the CSS.
         $form['commerce_payment']['payment_method']['#attached']['css'][] = drupal_get_path('module', 'commerce_paypal_wps') . '/theme/commerce_paypal_wps.theme.css';
+
         break;
       }
     }
