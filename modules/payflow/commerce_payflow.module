@@ -268,8 +268,13 @@ function commerce_payflow_link_default_settings() {
 /**
  * Payment method callback: settings form.
  */
-function commerce_payflow_link_settings_form($settings = array()) {
+function commerce_payflow_link_settings_form($settings = array(), $payment_method = NULL) {
   $form = array();
+
+  // Default to the Payflow Link payment method if none is passed in.
+  if (empty($payment_method)) {
+    $payment_method = commerce_payment_method_load($payment_method);
+  }
 
   // Merge default settings into the stored settings array.
   $settings = (array) $settings + commerce_payflow_link_default_settings();
@@ -278,14 +283,14 @@ function commerce_payflow_link_settings_form($settings = array()) {
   $form['partner'] = array(
     '#type' => 'textfield',
     '#title' => t('Partner'),
-    '#description' => t('Either PayPal or the name of the reseller who registered your Payflow account.'),
+    '#description' => t('Either PayPal or the name of the reseller who registered your @title account.', array('@title' => $payment_method['title'])),
     '#default_value' => $settings['partner'],
     '#required' => TRUE,
   );
   $form['vendor'] = array(
     '#type' => 'textfield',
     '#title' => t('Merchant login'),
-    '#description' => t('The merchant login ID you chose when you created your Payflow account.'),
+    '#description' => t('The merchant login ID you chose when you created your @title account.', array('@title' => $payment_method['title'])),
     '#default_value' => $settings['vendor'],
     '#required' => TRUE,
   );
@@ -306,7 +311,7 @@ function commerce_payflow_link_settings_form($settings = array()) {
   $form['mode'] = array(
     '#type' => 'radios',
     '#title' => t('Processing mode'),
-    '#description' => t('Either mode requires a Payflow account with Hosted Checkout Pages support. Additionally, "Enable Secure Token" must be set to "Yes" in the account service settings.'),
+    '#description' => t('Either mode requires a @title account with Hosted Checkout Pages support. "Enable Secure Token" must be set to "Yes" in the PayPal Manager service settings.', array('@title' => $payment_method['title'])),
     '#options' => array(
       'test' => ('Test - process test transactions to an account in test mode'),
       'live' => ('Live - process real transactions to a live account'),
@@ -328,7 +333,7 @@ function commerce_payflow_link_settings_form($settings = array()) {
     '#type' => 'select',
     '#title' => t('Default currency'),
     '#description' => t('Transactions in other currencies will be converted to this currency, so multi-currency sites must be configured to use appropriate conversion rates.') . '<br />' . t('Note: valid currencies will differ depending on your country and processor. Check before selecting a different currency.'),
-    '#options' => commerce_paypal_currencies('payflow_link'),
+    '#options' => commerce_paypal_currencies($payment_method['method_id']),
     '#default_value' => $settings['currency_code'],
   );
   $form['allow_supported_currencies'] = array(
@@ -341,12 +346,9 @@ function commerce_payflow_link_settings_form($settings = array()) {
     '#type' => 'radios',
     '#title' => t('Checkout redirect mode'),
     '#options' => array(
-      'iframe' => t('Stay on this site using an iframe to display that Payflow checkout page'),
-      'post' => t('Redirect to Payflow via POST through an automatically submitted form'),
-      'get' => t('Redirect to Payflow immediately with a GET request'),
-
-      // @todo Add support for Transparent Redirect.
-      // 'transparent' => t('Stay on this site using a credit card form that transparently submits to the Payflow server'),
+      'iframe' => t('Stay on this site using an iframe to embed the hosted checkout page'),
+      'post' => t('Redirect to the hosted checkout page via POST through an automatically submitted form'),
+      'get' => t('Redirect to the hosted checkout page immediately with a GET request'),
     ),
     '#default_value' => $settings['redirect_mode'],
   );
@@ -362,26 +364,26 @@ function commerce_payflow_link_settings_form($settings = array()) {
   $form['paypal_ec_instance'] = array(
     '#type' => 'select',
     '#title' => t('PayPal Express Checkout payment method rule'),
-    '#description' => t('Specify the payment method rule that contains your corresponding PayPal Express Checkout configuration for this Payflow Link instance.') . '<br />' . t('If none is selected, you must disable Express Checkout in your Hosted Checkout Pages service settings in the PayPal Manager.'),
+    '#description' => t('Specify the payment method rule that contains your corresponding PayPal Express Checkout configuration for this @title instance.', array('@title' => $payment_method['title'])) . '<br />' . t('If none is selected, you must disable Express Checkout in your Hosted Checkout Pages service settings in the PayPal Manager.'),
     '#options' => $options,
     '#default_value' => $settings['paypal_ec_instance'],
     '#empty_value' => '',
   );
   $form['paypal_ec_disable'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Disable the selected PayPal Express Checkout payment method rule on the checkout form so customers must choose it at Payflow.'),
+    '#title' => t('Disable the selected PayPal Express Checkout payment method rule on the checkout form so customers just see the option on the hosted checkout page.'),
     '#default_value' => $settings['paypal_ec_disable'],
   );
 
   $form['ba_desc'] = array(
     '#type' => 'textfield',
     '#title' => t('Express Checkout billing agreement description'),
-    '#description' => t('If you need to perform reference transactions on PayPal Express Checkout payments captured through Payflow, you must specify a billing agreement description.'),
+    '#description' => t('If you need to perform reference transactions on PayPal Express Checkout payments captured through @title, you must specify a billing agreement description.', array('@title' => $payment_method['title'])),
     '#default_value' => $settings['ba_desc'],
   );
   $form['show_payment_instructions'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Show a message on the checkout form when Payflow Link is selected telling the customer to "Continue with checkout to complete payment via PayPal."'),
+    '#title' => t('Show a message on the checkout form when @title is selected telling the customer to "Continue with checkout to complete payment via PayPal."', array('@title' => $payment_method['title'])),
     '#default_value' => $settings['show_payment_instructions'],
   );
   $form['emailreceipt'] = array(
@@ -425,10 +427,7 @@ function commerce_paypal_ppa_settings_form($settings = array()) {
     $settings['currency_code'] = 'USD';
   }
 
-  $form = commerce_payflow_link_settings_form($settings);
-
-  $form['currency_code']['#options'] = commerce_paypal_currencies('paypal_ppa');
-  $form['show_payment_instructions']['#title'] = t('Show a message on the checkout form when PayPal Payments Advanced is selected telling the customer to "Continue with checkout to complete payment via PayPal."');
+  $form = commerce_payflow_link_settings_form($settings, commerce_payment_method_load('paypal_ppa'));
 
   return $form;
 }
