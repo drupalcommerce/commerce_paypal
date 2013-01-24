@@ -575,6 +575,7 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
         // Add the iframe in a markup element.
         $form['iframe'] = array(
           '#markup' => commerce_payflow_link_hosted_checkout_iframe($payment_method, $order),
+          '#suffix' => '<div class="commerce-payflow-cancel">' . l(t('Cancel payment and go back'), 'checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key']) . '</div>',
         );
 
         return $form;
