@@ -255,6 +255,7 @@ function commerce_payflow_link_default_settings() {
     'currency_code' => in_array($default_currency, array_keys(commerce_paypal_currencies('payflow_link'))) ? $default_currency : 'USD',
     'allow_supported_currencies' => FALSE,
     'redirect_mode' => 'iframe',
+    'cancel_link' => TRUE,
     'paypal_ec_instance' => '',
     'paypal_ec_disable' => TRUE,
     'ba_desc' => '',
@@ -351,6 +352,11 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
       'get' => t('Redirect to the hosted checkout page immediately with a GET request'),
     ),
     '#default_value' => $settings['redirect_mode'],
+  );
+  $form['cancel_link'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Display a cancel link beneath the iframe of an embedded hosted checkout page.'),
+    '#default_value' => $settings['cancel_link'],
   );
 
   // Prepare a list of PayPal Express Checkout payment method rule options.
@@ -575,8 +581,12 @@ function commerce_payflow_link_redirect_form($form, &$form_state, $order, $payme
         // Add the iframe in a markup element.
         $form['iframe'] = array(
           '#markup' => commerce_payflow_link_hosted_checkout_iframe($payment_method, $order),
-          '#suffix' => '<div class="commerce-payflow-cancel">' . l(t('Cancel payment and go back'), 'checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key']) . '</div>',
         );
+
+        // Add a cancel link if configured.
+        if ($payment_method['settings']['cancel_link']) {
+          $form['iframe']['#suffix'] = '<div class="commerce-payflow-cancel">' . l(t('Cancel payment and go back'), 'checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key']) . '</div>';
+        }
 
         return $form;
     }
