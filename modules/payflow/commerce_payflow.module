@@ -273,7 +273,7 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
 
   // Default to the Payflow Link payment method if none is passed in.
   if (empty($payment_method)) {
-    $payment_method = commerce_payment_method_load($payment_method);
+    $payment_method = commerce_payment_method_load('payflow_link');
   }
 
   // Merge default settings into the stored settings array.
@@ -311,7 +311,7 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
   $form['mode'] = array(
     '#type' => 'radios',
     '#title' => t('Processing mode'),
-    '#description' => t('Either mode requires a @title account with Hosted Checkout Pages support. "Enable Secure Token" must be set to "Yes" in the PayPal Manager service settings.', array('@title' => $payment_method['title'])),
+    '#description' => t('Either mode requires a @title account with Hosted Checkout Pages. "Enable Secure Token" must be set to "Yes" in the PayPal Manager service settings.', array('@title' => $payment_method['title'])),
     '#options' => array(
       'test' => ('Test - process test transactions to an account in test mode'),
       'live' => ('Live - process real transactions to a live account'),
