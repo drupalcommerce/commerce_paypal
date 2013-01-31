@@ -244,6 +244,7 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
 
   // Prepare a name-value pair array to capture the requested amount.
   $nvp = array(
+    'BUTTONSOURCE' => $payment_method['buttonsource'],
     'TRXTYPE' => 'S',
     'ORIGID' => $transaction->remote_id,
     'AMT' => $amount,
@@ -261,6 +262,10 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
     if (!empty($transaction->data['commerce_payflow']['pnref'])) {
       $nvp['ORIGID'] = $transaction->data['commerce_payflow']['pnref'];
     }
+
+    // Update the BUTTONSOURCE to indicate Express Checkout.
+    $ec_payment_method = commerce_payment_method_instance_load('paypal_ec|' . $payment_method['settings']['paypal_ec_instance']);
+    $nvp['BUTTONSOURCE'] = $ec_payment_method['buttonsource'];
   }
 
   // Submit the reference transaction request to Payflow Pro.

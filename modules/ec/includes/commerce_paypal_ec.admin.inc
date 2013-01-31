@@ -96,16 +96,17 @@ function commerce_paypal_ec_capture_form_submit($form, &$form_state) {
   $order = $form_state['order'];
   $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $order_total = $order_wrapper->commerce_order_total->value();
+  $order_total['amount'] = commerce_currency_convert($order_total['amount'], $order_total['currency_code'], $transaction->currency_code);
 
   // Convert the amout to the commerce format.
-  $amount = commerce_currency_decimal_to_amount($form_state['values']['amount'], $order_total['currency_code']);
+  $amount = commerce_currency_decimal_to_amount($form_state['values']['amount'], $transaction->currency_code);
 
   // Build a name-value pair array for this transaction.
   $nvp = array(
     'METHOD' => 'DoCapture',
     'AUTHORIZATIONID' => $transaction->remote_id,
-    'AMT' => commerce_paypal_price_amount($amount, $order_total['currency_code']),
-    'CURRENCYCODE' => $order_total['currency_code'],
+    'AMT' => commerce_paypal_price_amount($amount, $transaction->currency_code),
+    'CURRENCYCODE' => $transaction->currency_code,
     'COMPLETETYPE' => $order_total['amount'] != $amount ? 'NotComplete' : 'Complete',
     'INVNUM' => commerce_paypal_ipn_invoice($order),
   );

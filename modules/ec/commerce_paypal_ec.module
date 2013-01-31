@@ -280,8 +280,8 @@ function commerce_paypal_ec_settings_form($settings = array()) {
     '#description' => t('Express Checkout Account Optional (ECAO) where PayPal accounts are not required for payment may not be available in all markets.'),
     '#options' => array(
       'Mark' => t('Require a PayPal account (this is the standard configuration).'),
-      'SoleLogin' => t('Allow PayPal or credit card payments, defaulting to the PayPal form.'),
-      'SoleBilling' => t('Allow PayPal or credit card payments, defaulting to the credit card form.'),
+      'SoleLogin' => t('Allow PayPal AND credit card payments, defaulting to the PayPal form.'),
+      'SoleBilling' => t('Allow PayPal AND credit card payments, defaulting to the credit card form.'),
     ),
     '#default_value' => $settings['ec_mode'],
   );
