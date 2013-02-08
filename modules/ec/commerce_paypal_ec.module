@@ -76,6 +76,12 @@ function commerce_paypal_ec_capture_void_access($order, $transaction) {
     return FALSE;
   }
 
+  // Return FALSE if the transaction is actually a pending echeck.
+  if (!empty($transaction->data['commerce_paypal_ec']['paymenttype']) &&
+    $transaction->data['commerce_paypal_ec']['paymenttype'] == 'echeck') {
+    return FALSE;
+  }
+
   // Return FALSE if it is more than 29 days past the original authorization.
   if (REQUEST_TIME - $transaction->created > 86400 * 29) {
     return FALSE;
@@ -810,10 +816,6 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
   if (!empty($payment_method['settings']['allow_supported_currencies']) && in_array($order_total['currency_code'], array_keys(commerce_paypal_currencies('paypal_ec')))) {
     $currency_code = $order_total['currency_code'];
   }
-  else {
-    // Otherwise default to USD.
-    $currency_code = 'USD';
-  }
 
   // Build a name-value pair array for this transaction.
   $nvp = array(
@@ -1020,6 +1022,7 @@ function commerce_paypal_ec_do_payment($payment_method, $order, $charge) {
 
     case 'Pending':
       $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+      $transaction->data['commerce_paypal_ec']['paymenttype'] = $response['PAYMENTINFO_0_PAYMENTTYPE'];
       $message[] = '<strong>' . t('Payment pending at PayPal') . '</strong>';
       $message[] = commerce_paypal_short_pending_reason($response['PAYMENTINFO_0_PENDINGREASON']);
       break;

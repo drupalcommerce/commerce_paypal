@@ -340,8 +340,8 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
   );
   $form['allow_supported_currencies'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Allow transactions to use any currency in the options list above.'),
-    '#description' => t('Transactions in unsupported currencies will still be converted into the default currency.'),
+    '#title' => t('Allow Express Checkout transactions to use any currency in the options list above.'),
+    '#description' => t('Transactions in unsupported currencies will still be converted into the default currency.') . '<br />' . t('In most cases, a single currency balance is the only option, so this should be tested thoroughly before being enabled on a live site.'),
     '#default_value' => $settings['allow_supported_currencies'],
   );
   $form['payment_icons'] = array(
@@ -780,6 +780,10 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
   // Add the pending reason if present.
   if (!empty($_POST['PENDINGREASON']) && $_POST['PENDINGREASON'] != 'completed') {
     $message[] = commerce_paypal_short_pending_reason($_POST['PENDINGREASON']);
+
+    // And ensure the local and remote status are pending.
+    $transaction->status = COMMERCE_PAYMENT_STATUS_PENDING;
+
   }
 
   // If this was a PayPal payment, store whether or not it came with a billing
@@ -792,6 +796,15 @@ function commerce_payflow_link_redirect_form_submit($order, $payment_method) {
       $message[] = t('PayPal fees: @feeamt', array('@feeamt' => $_POST['FEEAMT']));
     }
 
+    // Store the payment type so we know if the payment is via echeck.
+    if (!empty($_POST['PAYMENTTYPE'])) {
+      $transaction->data['commerce_paypal_ec']['paymenttype'] = $_POST['PAYMENTTYPE'];
+    }
+    else {
+      $transaction->data['commerce_paypal_ec']['paymenttype'] = '';
+    }
+
+    // Store the billing agreement ID if applicable.
     if (!empty($_POST['BAID'])) {
       $transaction->data['commerce_payflow']['baid'] = $_POST['BAID'];
       $message[] = t('Billing agreement ID: @baid', array('@baid' => $_POST['BAID']));

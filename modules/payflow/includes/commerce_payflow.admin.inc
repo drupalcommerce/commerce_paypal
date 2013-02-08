@@ -251,7 +251,7 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
     'TENDER' => 'C',
   );
 
-  // If the refernece transaction needs to go through PayPal, add the additional
+  // If the reference transaction needs to go through PayPal, add the additional
   // parameters for the billing agreement.
   if (!empty($transaction->data['commerce_payflow']['tender']) && $transaction->data['commerce_payflow']['tender'] == 'P') {
     $nvp['TENDER'] = 'P';
@@ -277,13 +277,16 @@ function commerce_payflow_link_reference_form_submit($form, &$form_state) {
   $new_transaction->amount = commerce_currency_decimal_to_amount($amount, $transaction->currency_code);
   $new_transaction->payload[REQUEST_TIME . '-reference'] = $response;
   $new_transaction->remote_id = $response['PNREF'];
+  $new_transaction->remote_status = 'S';
 
   if ($transaction->data['commerce_payflow']['tender'] == 'P') {
-    $new_transaction->remote_id = $response['PPREF'];
-    $new_transaction->remote_status = 'Completed';
-  }
-  else {
-    $new_transaction->remote_status = 'S';
+    if (!empty($response['PPREF'])) {
+      $new_transaction->remote_id = $response['PPREF'];
+    }
+
+    if (!empty($response['PAYMENTSTATUS'])) {
+      $new_transaction->remote_status = commerce_payflow_paypal_remote_status($response['PAYMENTSTATUS']);
+    }
   }
 
   $message = array();
