@@ -261,6 +261,7 @@ function commerce_payflow_link_default_settings() {
     'paypal_ec_disable' => TRUE,
     'ba_desc' => '',
     'show_payment_instructions' => FALSE,
+    'emailcustomer' => FALSE,
     'log' => array('request' => 0, 'response' => 0),
     'silent_post_logging' => 'notification',
   );
@@ -398,6 +399,11 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
     '#type' => 'checkbox',
     '#title' => t('Show a message on the checkout form when @title is selected telling the customer to "Continue with checkout to complete payment via PayPal."', array('@title' => $payment_method['title'])),
     '#default_value' => $settings['show_payment_instructions'],
+  );
+  $form['emailcustomer'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Instruct PayPal to e-mail payment receipts to your customers upon payment.'),
+    '#default_value' => $settings['emailcustomer'],
   );
 
   // Add the logging configuration form elements.
@@ -1003,6 +1009,11 @@ function commerce_payflow_link_create_secure_token($payment_method, $order, $bil
     if (!empty($billing_agreement)) {
       $nvp['BA_DESC'] = $billing_agreement;
     }
+  }
+
+  // If enabled, email the customer a receipt from PayPal.
+  if (!empty($payment_method['settings']['emailcustomer'])) {
+    $nvp['EMAILCUSTOMER'] = 'TRUE';
   }
 
   // If the Shipping module is on and we have a shipping address...
