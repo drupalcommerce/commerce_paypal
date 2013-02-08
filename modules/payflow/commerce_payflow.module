@@ -919,6 +919,19 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
     }
   }
 
+  // Alter the Review checkout page form for Payflow Link.
+  if ($form_id == 'commerce_checkout_form_review' && !empty($form_state['order']->data['commerce_payflow'])) {
+    drupal_add_js(array('commercePayflow' => array('page' => 'review')), 'setting');
+    $form['#attached']['js'][] = drupal_get_path('module', 'commerce_payflow') . '/commerce_payflow.js';
+
+    // If the Payflow query variable is present, reshow the error message and
+    // reload the page.
+    if (!empty($_GET['payflow-page']) && $_GET['payflow-page'] == 'review') {
+      drupal_set_message(t('Payment failed at the payment server. Please review your information and try again.'), 'error');
+      drupal_goto('checkout/' . $form_state['order']->order_id . '/review');
+    }
+  }
+
   // Alter the Completion checkout page form for Payflow Link.
   if ($form_id == 'commerce_checkout_form_complete' && !empty($form_state['order']->data['commerce_payflow'])) {
     $form['#attached']['js'][] = drupal_get_path('module', 'commerce_payflow') . '/commerce_payflow.js';

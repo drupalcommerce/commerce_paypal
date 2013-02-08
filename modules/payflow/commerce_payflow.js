@@ -6,7 +6,14 @@
 Drupal.behaviors.commercePayflowEscapeIframe = {
   attach: function (context, settings) {
     if (top !== self) {
-      window.parent.location.href = window.location.href;
+      if (typeof Drupal.settings.commercePayflow != 'undefined' &&
+        typeof Drupal.settings.commercePayflow.page != 'undefined' &&
+        Drupal.settings.commercePayflow.page == 'review') {
+        window.parent.location.href = window.location.href + '?payflow-page=review';
+      }
+      else {
+        window.parent.location.href = window.location.href;
+      }
     }
   }
 }
