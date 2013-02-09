@@ -240,6 +240,44 @@ function commerce_payflow_commerce_payment_method_info() {
 }
 
 /**
+ * Implements hook_page_alter().
+ */
+function commerce_payflow_page_alter(&$page) {
+  // Add a registration link to the PayPal Payments Advanced and Payflow Link
+  // payment method rules on the payment methods admin page.
+  if (!empty($page['content']['system_main']['#page_callback']) &&
+    $page['content']['system_main']['#page_callback'] == 'commerce_payment_ui_admin_page') {
+    // Ensure we loop over both enabled and disabled rules.
+    foreach (array('enabled', 'disabled') as $key) {
+      foreach ($page['content']['system_main'][$key]['rules']['#rows'] as $row_key => &$row) {
+        $services = array(
+          'commerce_payment_payflow_link' => 'payflow_link',
+          'commerce_payment_paypal_ppa' => 'paypal_ppa',
+        );
+
+        foreach ($services as $rule_name => $method_id) {
+          if (strpos($row[0]['data']['description']['settings']['machine_name']['#markup'], $rule_name) > 0) {
+            $row[0]['data']['#suffix'] = '<div class="service-description">' . commerce_payflow_service_description($method_id) . '</div></div>';
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Returns a service description and registration link for the specified method.
+ */
+function commerce_payflow_service_description($method_id) {
+  switch ($method_id) {
+    case 'payflow_link':
+      return t('Accept payment securely on your site via credit card, debit card, or PayPal using a merchant account of your choice. This payment method requires a PayPal Payflow account. <a href="!url">Sign up here</a> and edit this rule to start accepting payments.', array('!url' => 'https://www.paypal.com/webapps/mpp/referral/paypal-payflow-link?partner_id=VZ6B9QLQ8LZEE'));
+    case 'paypal_ppa':
+      return t('Accept payment securely on your site via credit card, debit card, or PayPal using PayPal as your payment processor. This payment method requires a PayPal Payflow account. <a href="!url">Sign up here</a> and edit this rule to start accepting payments.', array('!url' => 'https://www.paypal.com/webapps/mpp/referral/paypal-payments-advanced?partner_id=VZ6B9QLQ8LZEE'));
+  }
+}
+
+/**
  * Returns the default settings for the PayPal WPS payment method.
  */
 function commerce_payflow_link_default_settings() {
@@ -280,6 +318,12 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
 
   // Merge default settings into the stored settings array.
   $settings = (array) $settings + commerce_payflow_link_default_settings();
+
+  $form['service_description'] = array(
+    '#markup' => '<div>' . commerce_payflow_service_description($payment_method['method_id']) . ' '
+      . t('Your PayPal Manager login information should be used to configure these first four textfields.') . '<br /><br />'
+      . t('<strong>Important:</strong> Refer to the <a href="!url" target="_blank">module documentation</a> to ensure your PayPal Manager service settings are configured properly.', array('!url' => 'http://drupal.org/node/1902734')) . '</div>',
+  );
 
   // Add the Payflow account form fields.
   $form['partner'] = array(

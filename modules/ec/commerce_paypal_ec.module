@@ -202,6 +202,32 @@ function commerce_paypal_ec_commerce_payment_method_info() {
 }
 
 /**
+ * Implements hook_page_alter().
+ */
+function commerce_paypal_ec_page_alter(&$page) {
+  // Add a registration link to the PayPal Express Checkout payment method rules
+  // on the payment methods admin page.
+  if (!empty($page['content']['system_main']['#page_callback']) &&
+    $page['content']['system_main']['#page_callback'] == 'commerce_payment_ui_admin_page') {
+    // Ensure we loop over both enabled and disabled rules.
+    foreach (array('enabled', 'disabled') as $key) {
+      foreach ($page['content']['system_main'][$key]['rules']['#rows'] as $row_key => &$row) {
+        if (strpos($row[0]['data']['description']['settings']['machine_name']['#markup'], 'commerce_payment_paypal_ec') > 0) {
+          $row[0]['data']['#suffix'] = '<div class="service-description">' . commerce_paypal_ec_service_description() . '</div></div>';
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Returns a service description and registration link for the specified method.
+ */
+function commerce_paypal_ec_service_description() {
+  return t('Allow customers to pay via PayPal and optionally credit card or debit card on a securely hosted checkout form. This payment method requires a PayPal Business account. <a href="!url">Sign up here</a> and edit this rule to start accepting payments.', array('!url' => 'https://www.paypal.com/webapps/mpp/referral/paypal-express-checkout?partner_id=VZ6B9QLQ8LZEE'));
+}
+
+/**
  * Returns the default settings for the PayPal EC payment method.
  */
 function commerce_paypal_ec_default_settings() {
@@ -232,6 +258,11 @@ function commerce_paypal_ec_settings_form($settings = array()) {
 
   // Merge default settings into the stored settings array.
   $settings = (array) $settings + commerce_paypal_ec_default_settings();
+
+  $form['service_description'] = array(
+    '#markup' => '<div>' . commerce_paypal_ec_service_description() . ' '
+      . t('Refer to the <a href="!url" target="_blank">module documentation</a> to find your API credentials and ensure your payment method and account settings are configured properly.', array('!url' => 'http://drupal.org/node/1901466')) . '</div>',
+  );
 
   $form['api_username'] = array(
     '#type' => 'textfield',
