@@ -1036,6 +1036,7 @@ function commerce_payflow_link_create_secure_token($payment_method, $order, $bil
     'INVNUM' => commerce_paypal_ipn_invoice($order),
 
     // Add the billing address.
+    'BILLTOEMAIL' => substr($order->mail, 0, 60),
     'BILLTOFIRSTNAME' => substr($billing_address['first_name'], 0, 45),
     'BILLTOLASTNAME' => substr($billing_address['last_name'], 0, 45),
     'BILLTOSTREET' => substr($billing_address['thoroughfare'], 0, 150),
