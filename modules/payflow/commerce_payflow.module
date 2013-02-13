@@ -154,6 +154,13 @@ function commerce_payflow_link_reference_access($order, $transaction) {
     return FALSE;
   }
 
+  // Return FALSE if the payment method instance does not have reference
+  // transaction support enabled.
+  $payment_method = commerce_payment_method_instance_load($transaction->instance_id);
+  if (empty($payment_method['settings']['reference_transactions'])) {
+    return FALSE;
+  }
+
   // Allow access if the user can update payments on this transaction.
   return commerce_payment_transaction_access('update', $transaction);
 }
@@ -297,6 +304,7 @@ function commerce_payflow_link_default_settings() {
     'cancel_link' => TRUE,
     'paypal_ec_instance' => '',
     'paypal_ec_disable' => TRUE,
+    'reference_transactions' => FALSE,
     'ba_desc' => '',
     'show_payment_instructions' => FALSE,
     'emailcustomer' => FALSE,
@@ -433,10 +441,16 @@ function commerce_payflow_link_settings_form($settings = array(), $payment_metho
     '#default_value' => $settings['paypal_ec_disable'],
   );
 
+  $form['reference_transactions'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable reference transactions for payments captured through this @title account.', array('@title' => $payment_method['title'])),
+    '#description' => t('Contact PayPal if you are unsure if this option is available to you.'),
+    '#default_value' => $settings['reference_transactions'],
+  );
   $form['ba_desc'] = array(
     '#type' => 'textfield',
     '#title' => t('Express Checkout billing agreement description'),
-    '#description' => t('If you need to perform reference transactions on PayPal Express Checkout payments captured through @title, you must specify a billing agreement description.', array('@title' => $payment_method['title'])),
+    '#description' => t('If you have a PayPal account that supports reference transactions and need them for Express Checkout payments captured through @title, you must specify a billing agreement description.', array('@title' => $payment_method['title'])),
     '#default_value' => $settings['ba_desc'],
   );
   $form['show_payment_instructions'] = array(
@@ -1073,8 +1087,10 @@ function commerce_payflow_link_create_secure_token($payment_method, $order, $bil
     }
   }
 
-  // If a billing agreement description is passed in, set its parameters.
-  if (!is_null($billing_agreement)) {
+  // If reference transactions are supported by the payment method isntance and
+  // a billing agreement description is passed in, set its parameters.
+  if (!empty($payment_method['settings']['reference_transactions']) &&
+    !is_null($billing_agreement)) {
     $nvp['BILLINGTYPE'] = 'MerchantInitiatedBilling';
 
     if (!empty($billing_agreement)) {

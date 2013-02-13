@@ -246,6 +246,8 @@ function commerce_paypal_ec_default_settings() {
     'log' => array('request' => 0, 'response' => 0),
     'ipn_logging' => 'notification',
     'receiver_emails' => '',
+    'reference_transactions' => FALSE,
+    'ba_desc' => '',
     'show_payment_instructions' => FALSE,
   );
 }
@@ -363,6 +365,18 @@ function commerce_paypal_ec_settings_form($settings = array()) {
     '#title' => t('PayPal receiver e-mail addresses'),
     '#description' => t('Enter the primary e-mail address for your PayPal account where you receive Express Checkout payments or a comma separated list of valid e-mail addresses.') . '<br />' . t('IPNs that originate from payments made to a PayPal account whose e-mail address is not in this list will not be processed.'),
     '#default_value' => $settings['receiver_emails'],
+  );
+  $form['reference_transactions'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Enable reference transactions for payments captured through Express Checkout.'),
+    '#description' => t('Contact PayPal if you are unsure if this option is available to you.'),
+    '#default_value' => $settings['reference_transactions'],
+  );
+  $form['ba_desc'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Express Checkout billing agreement description'),
+    '#description' => t('If you have a PayPal account that supports reference transactions and need them, you must specify a billing agreement description.'),
+    '#default_value' => $settings['ba_desc'],
   );
   $form['show_payment_instructions'] = array(
     '#type' => 'checkbox',
@@ -869,6 +883,14 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
     'RETURNURL' => url('checkout/' . $order->order_id . '/payment/return/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
     'CANCELURL' => url('checkout/' . $order->order_id . '/payment/back/' . $order->data['payment_redirect_key'], array('absolute' => TRUE)),
   );
+
+  // If reference transactions are enabled and a billing agreement is supplied...
+  if (!empty($payment_method['settings']['reference_transactions']) &&
+    !empty($payment_method['settings']['ba_desc'])) {
+    $nvp['BILLINGTYPE'] = 'MerchantInitiatedBillingSingleAgreement';
+    $nvp['L_BILLINGTYPE0'] = 'MerchantInitiatedBillingSingleAgreement';
+    $nvp['L_BILLINGAGREEMENTDESCRIPTION0'] = $payment_method['settings']['ba_desc'];
+  }
 
   // Add itemized information to the API request.
   $nvp += commerce_paypal_ec_itemize_order($order, $currency_code);
