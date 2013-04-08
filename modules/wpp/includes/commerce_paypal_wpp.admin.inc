@@ -33,7 +33,7 @@ function commerce_paypal_wpp_capture_form($form, &$form_state, $order, $transact
   }
 
   // Convert the price amount to a user friendly decimal value.
-  $default_amount = commerce_currency_amount_to_decimal($default_amount, $transaction->currency_code);
+  $default_amount = number_format(commerce_currency_amount_to_decimal($default_amount, $transaction->currency_code), 2, '.', '');
 
   $description = implode('<br />', array(
     t('Authorization: @amount', array('@amount' => commerce_currency_format($transaction->amount, $transaction->currency_code))),
