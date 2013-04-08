@@ -106,7 +106,7 @@ function commerce_paypal_wpp_capture_form_submit($form, &$form_state) {
     $nvp = array(
       'METHOD' => 'DoReauthorization',
       'AUTHORIZATIONID' => $transaction->remote_id,
-      'AMT' => commerce_currency_amount_to_decimal($transaction->amount, $transaction->currency_code),
+      'AMT' => commerce_paypal_price_amount($transaction->amount, $transaction->currency_code),
       'CURRENCYCODE' => $transaction->currency_code,
     );
 
