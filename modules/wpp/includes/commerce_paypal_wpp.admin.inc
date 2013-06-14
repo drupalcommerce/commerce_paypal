@@ -111,7 +111,7 @@ function commerce_paypal_wpp_capture_form_submit($form, &$form_state) {
     );
 
     // Submit the reauthorization request.
-    $response = commerce_paypal_wpp_request($payment_method, $nvp, $order);
+    $response = commerce_paypal_api_request($payment_method, $nvp, $order);
     $transaction->payload[REQUEST_TIMESTAMP . '-reauthorization'] = $response;
 
     // If the response contains an authorization ID...
@@ -146,7 +146,7 @@ function commerce_paypal_wpp_capture_form_submit($form, &$form_state) {
     );
 
     // Submit the capture request request to PayPal.
-    $response = commerce_paypal_wpp_request($payment_method, $nvp, $order);
+    $response = commerce_paypal_api_request($payment_method, $nvp, $order);
     $transaction->payload[REQUEST_TIME . '-capture'] = $response;
 
     switch ($response['ACK']) {
