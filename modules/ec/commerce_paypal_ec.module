@@ -1137,22 +1137,17 @@ function commerce_paypal_ec_itemize_order($order, $currency_code) {
     // If the current line item is a shipping line item, track its amount value
     // without taxes separately from products.
     if (module_exists('commerce_shipping') && $line_item_wrapper->type->value() == 'shipping') {
-      // Extract the unit price and the amount of non-display inclusive taxes it
-      // contains (i.e. sales tax).
+      // Extract the unit price.
       $shipping_price = $line_item_wrapper->commerce_unit_price->value();
 
-      // Otherwise track the total costs of all shipping line items on the
-      // order to add to the final payment request as a single amount, though
-      // typically this should be limited to one shipping line item per order.
+      // Track the total costs of all shipping line items on the order to add to
+      // the final payment request as a single amount, though typically this
+      // should be limited to one shipping line item per order.
       $shippingamt += $shipping_price['amount'];
     }
     else {
       // Extract the line item unit price value array.
       $unit_price = $line_item_wrapper->commerce_unit_price->value();
-
-      // Determine the amount of non-display inclusive tax included in this line
-      // item (i.e. sales tax).
-      $l_taxamt = commerce_tax_total_amount($unit_price['data']['components'], FALSE, $currency_code);
 
       // Convert the unit price to the propery currency.
       $l_amt = commerce_currency_convert($unit_price['amount'], $unit_price['currency_code'], $currency_code);
@@ -1180,7 +1175,12 @@ function commerce_paypal_ec_itemize_order($order, $currency_code) {
   // Determine the order level item amount and tax amount line items. To prevent
   // rounding problems getting in the way, we calculate them based on the order
   // total instead of tallying it from each line item.
-  $taxamt = commerce_round(COMMERCE_ROUND_HALF_UP, commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code));
+  if (module_exists('commerce_tax')) {
+    $taxamt = commerce_round(COMMERCE_ROUND_HALF_UP, commerce_tax_total_amount($order_total['data']['components'], FALSE, $currency_code));
+  }
+  else {
+    $taxamt = 0;
+  }
 
   // Add the total item and tax amounts to the payment request
   $nvp += array(
