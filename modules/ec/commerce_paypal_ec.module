@@ -418,7 +418,7 @@ function commerce_paypal_ec_form_alter(&$form, &$form_state, $form_id) {
       // If we find PayPal EC, include its CSS on the form and exit the loop.
       if ($method_id == 'paypal_ec') {
         $paypal_ec = TRUE;
-        $value = commerce_paypal_ec_mark_image();
+        $value = theme('paypal_ec_mark_image');
       }
     }
 
@@ -1401,12 +1401,20 @@ function commerce_paypal_ec_mark_url() {
   return url(drupal_get_path('module', 'commerce_paypal_ec') . '/images/paypal-ec-logo.gif', array('absolute' => TRUE));
 }
 
+
+/**
+ * Implements hook_theme().
+ */
+function commerce_paypal_ec_theme() {
+  return array(
+    'paypal_ec_mark_image' => array(),
+  );
+}
+
 /**
  * Returns a themed PayPal mark image.
- *
- * @todo Make this an actual theme function.
  */
-function commerce_paypal_ec_mark_image($remote = FALSE) {
+function theme_paypal_ec_mark_image() {
   $variables = array(
     'path' => commerce_paypal_ec_mark_url(),
     'title' => t('Pay with PayPal'),
