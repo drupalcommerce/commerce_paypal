@@ -911,7 +911,11 @@ function commerce_payflow_form_alter(&$form, &$form_state, $form_id) {
 
       // If we find Payflow Link, include its CSS on the form and exit the loop.
       if (in_array($method_id, array('payflow_link', 'paypal_ppa'))) {
+        // Merge in the default settings in case the payment method has not been
+        // configured yet.
         $payment_method = commerce_payment_method_instance_load($key);
+        $payment_method['settings'] += commerce_payflow_link_default_settings();
+
         $payment_icons = array_values($payment_method['settings']['payment_icons']);
         $payflow_link = TRUE;
 
