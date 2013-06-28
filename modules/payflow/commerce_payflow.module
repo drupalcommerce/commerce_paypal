@@ -1280,7 +1280,7 @@ function commerce_payflow_api_request($payment_method, $api, $nvp = array(), $or
   foreach ($nvp as $key => $value) {
     // Since we aren't supposed to urlencode parameter values for PFL / PPA API
     // requests, we strip out ampersands and equals signs to
-    $pairs[] = $key . '=' . str_replace(array('&', '='), array(''), $value);
+    $pairs[] = $key . '=' . str_replace(array('&', '=', '#'), array(''), $value);
   }
 
   // Setup the cURL request.
