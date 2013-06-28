@@ -233,7 +233,7 @@ function commerce_paypal_ec_service_description() {
 function commerce_paypal_ec_default_settings() {
   $default_currency = commerce_default_currency();
 
-  return array(
+  $default_settings = array(
     'api_username' => '',
     'api_password' => '',
     'api_signature' => '',
@@ -249,7 +249,14 @@ function commerce_paypal_ec_default_settings() {
     'reference_transactions' => FALSE,
     'ba_desc' => '',
     'show_payment_instructions' => FALSE,
+    'update_billing_profiles' => TRUE,
   );
+
+  if (module_exists('commerce_shipping')) {
+    $default_settings['update_shipping_profiles'] = TRUE;
+  }
+
+  return $default_settings;
 }
 
 /**
@@ -383,6 +390,19 @@ function commerce_paypal_ec_settings_form($settings = array()) {
     '#title' => t('Show a message on the checkout form when PayPal EC is selected telling the customer to "Continue with checkout to complete payment via PayPal."'),
     '#default_value' => $settings['show_payment_instructions'],
   );
+  $form['update_billing_profiles'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Update billing customer profiles with address information the customer enters at PayPal.'),
+    '#default_value' => $settings['update_billing_profiles'],
+  );
+
+  if (module_exists('commerce_shipping')) {
+    $form['update_shipping_profiles'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Update shipping customer profiles with address information the customer enters at PayPal.'),
+      '#default_value' => $settings['update_shipping_profiles'],
+    );
+  }
 
   return $form;
 }
@@ -615,6 +635,8 @@ function commerce_paypal_ec_redirect_form_back($order, $payment_method) {
  * Payment method callback: redirect form return validation.
  */
 function commerce_paypal_ec_redirect_form_validate($order, $payment_method) {
+  $payment_method['settings'] += commerce_paypal_ec_default_settings();
+
   if (!empty($payment_method['settings']['ipn_logging']) &&
     $payment_method['settings']['ipn_logging'] == 'full_ipn') {
     watchdog('commerce_paypal_ec', 'Customer returned from PayPal with the following POST data:!ipn_data', array('!ipn_data' => '<pre>' . check_plain(print_r($_POST, TRUE)) . '</pre>'), WATCHDOG_NOTICE);
@@ -654,11 +676,13 @@ function commerce_paypal_ec_redirect_form_validate($order, $payment_method) {
   }
 
   // Create a billing information profile for the order with the available info.
-  commerce_paypal_ec_customer_profile($order, 'billing', $response, 'PAYMENTREQUEST_0_');
+  if (!empty($payment_method['settings']['update_billing_profiles'])) {
+    commerce_paypal_ec_customer_profile($order, 'billing', $response, 'PAYMENTREQUEST_0_');
+  }
 
   // If the shipping module exists on the site, create a shipping information
   // profile for the order with the available info.
-  if (module_exists('commerce_shipping')) {
+  if (module_exists('commerce_shipping') && !empty($payment_method['settings']['update_shipping_profiles'])) {
     commerce_paypal_ec_customer_profile($order, 'shipping', $response, 'PAYMENTREQUEST_0_');
   }
 
