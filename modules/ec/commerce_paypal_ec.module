@@ -419,12 +419,16 @@ function commerce_paypal_ec_form_alter(&$form, &$form_state, $form_id) {
   if (strpos($form_id, 'views_form_commerce_cart_form_') === 0 && commerce_paypal_ec_enabled()) {
     // If the cart form View shows line items...
     if (!empty($form_state['build_info']['args'][0]->result)) {
-      // Add the Express Checkout form as a suffix to the cart form.
-      $payment_method = commerce_payment_method_instance_load('paypal_ec|commerce_payment_paypal_ec');
       $order = $form_state['order'];
 
-      $ec_form = drupal_get_form('commerce_paypal_ec_order_form', $payment_method, $order);
-      $form['#suffix'] .= drupal_render($ec_form);
+      // And Express Checkout is also available as a payment option in checkout...
+      if (commerce_paypal_ec_enabled($order)) {
+        // Add the Express Checkout form as a suffix to the cart form.
+        $payment_method = commerce_payment_method_instance_load('paypal_ec|commerce_payment_paypal_ec');
+
+        $ec_form = drupal_get_form('commerce_paypal_ec_order_form', $payment_method, $order);
+        $form['#suffix'] .= drupal_render($ec_form);
+      }
     }
   }
 
@@ -723,7 +727,12 @@ function commerce_paypal_ec_redirect_form_submit($order, $payment_method) {
  */
 function commerce_paypal_ec_paypal_ipn_validate($order, $payment_method, $ipn) {
   // Prepare a trimmed list of receiver e-mail addresses.
-  $receiver_emails = explode(',', $payment_method['settings']['receiver_emails']);
+  if (!empty($payment_method['settings']['receiver_emails'])) {
+    $receiver_emails = explode(',', $payment_method['settings']['receiver_emails']);
+  }
+  else {
+    $receiver_emails = array();
+  }
 
   foreach ($receiver_emails as $key => &$email) {
     $email = trim(strtolower($email));
@@ -1360,11 +1369,22 @@ function commerce_paypal_ec_checkout_url($server, $token) {
  * @param $order
  *    The order that needs to be checked.
  *
- * @todo Rework this function to support any number of Express Checkout rules
- * and actually evaluate their conditions to see if it would be available for a
- * particular order.
+ * @todo Rework this function to support any number of Express Checkout rules.
  */
 function commerce_paypal_ec_enabled($order = NULL) {
+  // If an order is passed in, then pass it through Rules to only return TRUE if
+  // the Express Checkout rule is available for the order.
+  if (!empty($order)) {
+    $order->payment_methods = array();
+    rules_invoke_all('commerce_payment_methods', $order);
+
+    // Sort the payment methods array by the enabling Rules' weight values.
+    uasort($order->payment_methods, 'drupal_sort_weight');
+
+    return in_array('paypal_ec|commerce_payment_paypal_ec', array_keys($order->payment_methods));
+  }
+
+  // Otherwise sipmly load the default PayPal EC rule and see if it's enabled.
   $rule = rules_config_load('commerce_payment_paypal_ec');
 
   $enabled = !empty($rule) && $rule->active;
