@@ -419,7 +419,7 @@ function commerce_paypal_ec_settings_form($settings = array()) {
 
   $form['enable_bml'] = array(
     '#type' => 'checkbox',
-    '#title' => t('Enable PayPal Bill Me Later™.'),
+    '#title' => t('Enable PayPal Bill Me Later™ button on the shopping cart page.'),
     '#description' => t('By selecting PayPal, you also receive Bill Me Later™ absolutely FREE. Bill Me Later™ enables customers to pay you now and pay us later. Still not sure? <a href="#" class="paypal-bml-popin">Learn More</a>.'),
     '#default_value' => $settings['enable_bml'],
     '#attached' => array(
