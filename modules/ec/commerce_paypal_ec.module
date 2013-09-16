@@ -12,6 +12,8 @@ define('PAYPAL_BANNER_API_KEY_STAGING', '5b143c7130a51e9fe93468ee83ddadd0459b7fe
 define('PAYPAL_BANNER_API_SECRET', '505d0a6aa32b1bc7d5b7362bb526d50b10b53b9f');
 define('PAYPAL_BANNER_API_SECRET_STAGING', '4c20fe076f0d0edf871e272568f4a91970f1650c');
 
+define('PAYPAL_BANNER_BN_CODE', 'YNUEPVVKCHL7E');
+
 /**
  * Implements hook_menu().
  */
@@ -1620,7 +1622,6 @@ function commerce_paypal_ec_banners_default_settings() {
   return array(
     'banner_agreement' => TRUE,
     'api_email' => '',
-    'api_bncode' => 'CommerceGuys_Cart_EC',
     'banner_size' => '120x240',
     'server' => 'live',
   );
@@ -1669,22 +1670,6 @@ function commerce_paypal_ec_block_configure($delta = '') {
         ),
       ),
     );
-
-    /**
-     * API Bncode.
-     *
-     * @todo Determine if this should even be displayed to merchants.
-    $form['paypal_ec_banners']['settings']['api_bncode'] = array(
-      '#type' => 'textfield',
-      '#title' => t('Banner Bn Code'),
-      '#default_value' => $settings['api_bncode'],
-      '#states' => array(
-        'visible' => array(
-          ':input[name$="[banner_agreement]"]' => array('checked' => TRUE),
-        ),
-      ),
-    );
-     */
 
     $form['paypal_ec_banners']['settings']['banner_size'] = array(
       '#type' => 'select',
@@ -1829,7 +1814,7 @@ function commerce_paypal_ec_block_view($delta = '') {
  */
 function commerce_paypal_ec_request_banner_account($settings) {
   $data = array(
-    'bnCode' => $settings['api_bncode'],
+    'bnCode' => PAYPAL_BANNER_BN_CODE,
     'emailAddress' => $settings['api_email'],
   );
 
