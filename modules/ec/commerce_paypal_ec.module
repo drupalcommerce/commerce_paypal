@@ -475,7 +475,7 @@ function commerce_paypal_ec_form_alter(&$form, &$form_state, $form_id) {
         $form['#suffix'] .= drupal_render($ec_form);
 
         // Add the Bill Me Later form with a separator if enabled.
-        if ($payment_method['settings']['enable_bml']) {
+        if (!empty($payment_method['settings']['enable_bml'])) {
           $bml_form = drupal_get_form('commerce_paypal_bml_order_form', $payment_method, $order, TRUE);
           $form['#suffix'] .= drupal_render($bml_form);
         }
