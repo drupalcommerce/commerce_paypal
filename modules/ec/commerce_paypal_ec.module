@@ -1662,7 +1662,7 @@ function commerce_paypal_ec_block_configure($delta = '') {
     $form['paypal_ec_banners']['settings']['api_email'] = array(
       '#type' => 'textfield',
       '#title' => t('E-mail address'),
-      '#description' => t('Enter the e-mail address used for your PayPal Banners account. Currently, this must be a live account.'),
+      '#description' => t('Enter the e-mail address used for your PayPal Banners account.'),
       '#default_value' => $settings['api_email'],
       '#states' => array(
         'visible' => array(
@@ -1706,22 +1706,6 @@ function commerce_paypal_ec_block_configure($delta = '') {
         ),
       ),
     );
-
-    // API Server.
-    $form['paypal_ec_banners']['settings']['server'] = array(
-      '#type' => 'radios',
-      '#title' => t('PayPal Banners server'),
-      '#options' => array(
-        'sandbox' => ('Sandbox - use for testing, requires a PayPal Banners Sandbox account'),
-        'live' => ('Live - use for real actions'),
-      ),
-      '#default_value' => $settings['server'],
-      '#states' => array(
-        'visible' => array(
-          ':input[name$="[banner_agreement]"]' => array('checked' => TRUE),
-        ),
-      ),
-    );
   }
 
   $form['#attached']['css'][] = drupal_get_path('module', 'commerce_paypal_ec') . '/theme/commerce_paypal_ec.theme.css';
@@ -1754,6 +1738,10 @@ function commerce_paypal_ec_block_save($delta = '', $edit = array()) {
       $edit['settings'] = array_map('trim', $edit['settings']);
 
       if ($edit['settings']['banner_agreement'] == TRUE) {
+        /**
+         * Using the staging server is for now unavailable, so we simply default
+         * to using the live key and secret.
+         *
         if ($edit['settings']['server'] == 'live') {
           $edit['settings']['api_key'] = PAYPAL_BANNER_API_KEY;
           $edit['settings']['api_secret'] = PAYPAL_BANNER_API_SECRET;
@@ -1762,6 +1750,9 @@ function commerce_paypal_ec_block_save($delta = '', $edit = array()) {
           $edit['settings']['api_key'] = PAYPAL_BANNER_API_KEY_STAGING;
           $edit['settings']['api_secret'] = PAYPAL_BANNER_API_SECRET_STAGING;
         }
+         */
+        $edit['settings']['api_key'] = PAYPAL_BANNER_API_KEY;
+        $edit['settings']['api_secret'] = PAYPAL_BANNER_API_SECRET;
 
         // Gets the payerId and the publisherId.
         if (($banner_account = commerce_paypal_ec_request_banner_account($edit['settings']))
