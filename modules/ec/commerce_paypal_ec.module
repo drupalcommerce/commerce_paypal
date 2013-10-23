@@ -1660,8 +1660,8 @@ function commerce_paypal_ec_block_configure($delta = '') {
     // API Email.
     $form['paypal_ec_banners']['settings']['api_email'] = array(
       '#type' => 'textfield',
-      '#title' => t('E-mail address'),
-      '#description' => t('Enter the e-mail address used for your PayPal Banners account.'),
+      '#title' => t('PayPal account e-mail address'),
+      '#description' => t('Enter the same e-mail address used in your Express Checkout configuration.'),
       '#default_value' => $settings['api_email'],
       '#states' => array(
         'visible' => array(
