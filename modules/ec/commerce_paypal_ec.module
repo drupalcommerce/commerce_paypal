@@ -1653,7 +1653,7 @@ function commerce_paypal_ec_block_configure($delta = '') {
     $form['paypal_ec_banners']['settings']['banner_agreement'] = array(
       '#type' => 'checkbox',
       // We are not using l() according to https://drupal.org/node/322774.
-      '#title' => t('I agree to the <a href="@terms_link">PayPal Banner Program Operating Terms</a>.', array('@terms_link' => 'https://financing.paypal.com/ppfinportal/content/operatingAgmt')),
+      '#title' => t('I agree to the <a target="_blank" href="@terms_link">PayPal Banner Program Operating Terms</a>.', array('@terms_link' => 'https://financing.paypal.com/ppfinportal/content/operatingAgmt')),
       '#default_value' => $settings['banner_agreement'],
     );
 
