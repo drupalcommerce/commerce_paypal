@@ -472,7 +472,7 @@ function commerce_paypal_wps_order_form($form, &$form_state, $order, $settings) 
   $form['#action'] = commerce_paypal_wps_server_url($settings['server']);
 
   foreach ($data as $name => $value) {
-    if (!empty($value)) {
+    if (isset($value)) {
       $form[$name] = array('#type' => 'hidden', '#value' => $value);
     }
   }
