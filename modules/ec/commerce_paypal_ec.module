@@ -1049,7 +1049,7 @@ function commerce_paypal_ec_set_express_checkout($payment_method, $order, $flow)
   if (module_exists('commerce_shipping')) {
     // If we have a shipping address, pass it to PayPal and do not allow the
     // customer to set a new one at PayPal.
-    if (!empty($order_wrapper->commerce_customer_shipping->commerce_customer_address)) {
+    if (isset($order_wrapper->commerce_customer_shipping) && !empty($order_wrapper->commerce_customer_shipping->commerce_customer_address)) {
       $shipping_address = $order_wrapper->commerce_customer_shipping->commerce_customer_address->value();
 
       // Ensure there's a name_line.
