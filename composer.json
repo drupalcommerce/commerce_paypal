@@ -1,0 +1,10 @@
+{
+  "name": "drupal/commerce_paypal",
+  "type": "drupal-module",
+  "description": "Provides Commerce integration for Paypal.",
+  "homepage": "http://drupal.org/project/commerce_paypal",
+  "license": "GPL-2.0+",
+  "require": {
+    "drupal/commerce": "~2"
+  }
+}
