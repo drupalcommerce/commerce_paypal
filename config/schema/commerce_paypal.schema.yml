@@ -1,0 +1,9 @@
+commerce_payment.commerce_payment_gateway.plugin.paypal_payments_pro:
+  type: commerce_payment_gateway_configuration
+  mapping:
+    client_id:
+      type: string
+      label: 'Client ID'
+    client_secret:
+      type: string
+      label: 'Client secret'
