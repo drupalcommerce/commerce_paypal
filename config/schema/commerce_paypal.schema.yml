@@ -1,3 +1,19 @@
+commerce_payment.commerce_payment_gateway.plugin.paypal_express_checkout:
+  type: commerce_payment_gateway_configuration
+  mapping:
+    api_username:
+      type: string
+      label: 'API Username'
+    api_password:
+      type: string
+      label: 'API Password'
+    signature:
+      type: string
+      label: 'Signature'
+    solution_type:
+      type: string
+      label: 'Type of checkout flow'
+
 commerce_payment.commerce_payment_gateway.plugin.paypal_payments_pro:
   type: commerce_payment_gateway_configuration
   mapping:
