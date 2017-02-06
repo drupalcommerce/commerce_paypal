@@ -304,7 +304,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       // If we were able to find the authorization in the related resource array.
       if (isset($authorization['id'])) {
         try {
-           $response = $this->httpClient->post($this->apiUrl() . '/payments/authorization/' . $authorization['id'] . '/void', [
+          $response = $this->httpClient->post($this->apiUrl() . '/payments/authorization/' . $authorization['id'] . '/void', [
             'headers' => [
               'Content-type' => 'application/json',
               'Authorization' => 'Bearer ' . $this->getAccessToken(),
@@ -340,7 +340,6 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       throw new \InvalidArgumentException('Only payments in the "capture_completed" and "capture_partially_refunded" states can be refunded.');
     }
     // TODO: check if more than 180 days.
-
     // If not specified, refund the entire amount.
     $amount = $amount ?: $payment->getAmount();
     // Validate the requested amount.
@@ -458,7 +457,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
         $payment_method->card_exp_month = $payment_details['expiration']['month'];
         $payment_method->card_exp_year = $payment_details['expiration']['year'];
         $expires = CreditCard::calculateExpirationTimestamp($payment_details['expiration']['month'], $payment_details['expiration']['year']);
-        
+
         // Store the remote ID returned by the request.
         $payment_method->setRemoteId($data['id']);
         $payment_method->setExpiresTime($expires);
@@ -533,10 +532,12 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
 
   /**
    * Shows details for a payment, by ID, that is yet completed.
+   *
    * For example, a payment that was created, approved, or failed.
    *
-   * @param $payment_id
-   *   The identifier
+   * @param string $payment_id
+   *   The payment identifier.
+   *
    * @return \Psr\Http\Message\ResponseInterface|bool
    *   The HTTP response, or FALSE in case of failure.
    */
