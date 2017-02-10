@@ -35,6 +35,8 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  */
 class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressCheckoutInterface {
 
+  use PaypalPaymentGatewayTrait;
+
   /**
    * The HTTP client.
    *
@@ -342,6 +344,97 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
 
     $payment->setRefundedAmount($new_refunded_amount);
     $payment->save();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function onNotify(Request $request) {
+    // Get IPN request data and basic processing for the IPN request.
+    $ipn_data = $this->processIpnRequest($request);
+    if (!$ipn_data) {
+      return FALSE;
+    }
+
+    // Do not perform any processing on EC transactions here that do not have
+    // transaction IDs, indicating they are non-payment IPNs such as those used
+    // for subscription signup requests.
+    if (empty($ipn_data['txn_id'])) {
+      \Drupal::logger('commerce_paypal')->alert('The IPN request does not have a transaction id. Ignored.');
+      return FALSE;
+    }
+    // Exit when we don't get a payment status we recognize.
+    if (!in_array($ipn_data['payment_status'], ['Failed', 'Voided', 'Pending', 'Completed', 'Refunded'])) {
+      return FALSE;
+    }
+    // If this is a prior authorization capture IPN...
+    if (in_array($ipn_data['payment_status'], ['Voided', 'Pending', 'Completed']) && !empty($ipn_data['auth_id'])) {
+      // Ensure we can load the existing corresponding transaction.
+      $payment = $this->loadPaymentByRemoteId($ipn_data['auth_id']);
+      // If not, bail now because authorization transactions should be created
+      // by the Express Checkout API request itself.
+      if (!$payment) {
+        \Drupal::logger('commerce_paypal')->warning('IPN for Order @order_number ignored: authorization transaction already created.', ['@order_number' => $ipn_data['invoice']]);
+        return FALSE;
+      }
+      $amount = new Price($ipn_data['mc_gross'], $ipn_data['mc_currency']);
+      $payment->setAmount($amount);
+      // Update the payment state.
+      switch ($ipn_data['payment_status']) {
+        case 'Voided':
+          $payment->state = 'authorization_voided';
+          break;
+        case 'Pending':
+          $payment->state = 'authorization';
+          break;
+        case 'Completed':
+          $payment->state = 'capture_completed';
+          $payment->setCapturedTime(REQUEST_TIME);
+          break;
+      }
+      // Update the remote id.
+      $payment->remote_id = $ipn_data['txn_id'];
+    }
+    elseif ($ipn_data['payment_status'] == 'Refunded') {
+      // Get the corresponding parent transaction and refund it.
+      $payment = $this->loadPaymentByRemoteId($ipn_data['parent_txn_id']);
+      if (!$payment) {
+        \Drupal::logger('commerce_paypal')->warning('IPN for Order @order_number ignored: the transaction to be refunded does not exist.', ['@order_number' => $ipn_data['invoice']]);
+        return FALSE;
+      }
+      elseif ($payment->getState() == 'capture_refunded') {
+        \Drupal::logger('commerce_paypal')->warning('IPN for Order @order_number ignored: the transaction is already refunded.', ['@order_number' => $ipn_data['invoice']]);
+        return FALSE;
+      }
+      $amount_number = abs($ipn_data['mc_gross']);
+      $amount = new Price((string) $amount_number, $ipn_data['mc_currency']);
+      // Check if the Refund is partial or full.
+      $old_refunded_amount = $payment->getRefundedAmount();
+      $new_refunded_amount = $old_refunded_amount->add($amount);
+      if ($new_refunded_amount->lessThan($payment->getAmount())) {
+        $payment->state = 'capture_partially_refunded';
+      }
+      else {
+        $payment->state = 'capture_refunded';
+      }
+      $payment->setRefundedAmount($new_refunded_amount);
+    }
+    elseif ($ipn_data['payment_status'] == 'Failed') {
+      // ToDo - to check and report existing payments???
+    }
+    else {
+      // In other circumstances, exit the processing, because we handle those
+      // cases directly during API response processing.
+      \Drupal::logger('commerce_paypal')->notice('IPN for Order @order_number ignored: this operation was accommodated in the direct API response.', ['@order_number' => $ipn_data['invoice']]);
+      return FALSE;
+    }
+    if (isset($payment)) {
+      $payment->currency_code = $ipn_data['mc_currency'];
+      // Set the transaction's statuses based on the IPN's payment_status.
+      $payment->remote_state = $ipn_data['payment_status'];
+      // Save the transaction information.
+      $payment->save();
+    }
   }
 
   /**
