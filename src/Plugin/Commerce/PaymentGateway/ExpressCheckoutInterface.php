@@ -4,14 +4,13 @@ namespace Drupal\commerce_paypal\Plugin\Commerce\PaymentGateway;
 
 use Drupal\commerce_order\Entity\OrderInterface;
 use Drupal\commerce_payment\Entity\PaymentInterface;
-use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OffsitePaymentGatewayInterface;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\SupportsAuthorizationsInterface;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\SupportsRefundsInterface;
 
 /**
  * Provides the interface for the Express Checkout payment gateway.
  */
-interface ExpressCheckoutInterface extends OffsitePaymentGatewayInterface, SupportsAuthorizationsInterface, SupportsRefundsInterface {
+interface ExpressCheckoutInterface extends SupportsAuthorizationsInterface, SupportsRefundsInterface {
 
   /**
    * Gets the API URL.
@@ -36,12 +35,13 @@ interface ExpressCheckoutInterface extends OffsitePaymentGatewayInterface, Suppo
 
   /**
    * SetExpressCheckout API Operation (NVP) request.
+   *
    * Builds the data for the request and make the request.
    *
    * @param \Drupal\commerce_payment\Entity\PaymentInterface $payment
    *   The payment.
    * @param array $extra
-   *   Extra data needed for this request, ex.: cancel url, return url, transaction mode, etc....
+   *   Extra data needed for this request.
    *
    * @return array
    *   PayPal response data.

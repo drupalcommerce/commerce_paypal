@@ -1,0 +1,8 @@
+services:
+  commerce_paypal.logger:
+    class: Drupal\Core\Logger\LoggerChannel
+    factory: logger.factory:get
+    arguments: ['commerce_paypal']
+  commerce_paypal.ipn_handler:
+    class: Drupal\commerce_paypal\IPNHandler
+    arguments: ['@entity_type.manager', '@commerce_paypal.logger', '@http_client']
