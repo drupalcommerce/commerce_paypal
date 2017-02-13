@@ -463,7 +463,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         'origid' => $payment->getRemoteId(),
       ]);
 
-      if ($data['result'] !== 0) {
+      if ($data['result'] !== '0') {
         throw new PaymentGatewayException('Credit could not be completed. Message: ' . $data['respmsg'], $data['result']);
       }
 
