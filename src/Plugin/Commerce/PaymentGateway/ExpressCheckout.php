@@ -384,9 +384,11 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
         case 'Voided':
           $payment->state = 'authorization_voided';
           break;
+
         case 'Pending':
           $payment->state = 'authorization';
           break;
+
         case 'Completed':
           $payment->state = 'capture_completed';
           $payment->setCapturedTime(REQUEST_TIME);

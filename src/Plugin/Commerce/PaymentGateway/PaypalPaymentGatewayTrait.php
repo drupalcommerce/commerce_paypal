@@ -15,7 +15,7 @@ trait PaypalPaymentGatewayTrait {
    * @param string $remote_id
    *   The remote id property for a payment.
    *
-   * @return \Drupal\commerce_payment\Entity\PaymentInterface.
+   * @return \Drupal\commerce_payment\Entity\PaymentInterface
    *   Payment object.
    */
   public function loadPaymentByRemoteId($remote_id) {
@@ -39,7 +39,6 @@ trait PaypalPaymentGatewayTrait {
     $ipn_data = $this->getIpnRequestValidate($request);
 
     // ToDo other general validations for IPN data.
-
     return $ipn_data;
   }
 
@@ -102,7 +101,7 @@ trait PaypalPaymentGatewayTrait {
    * @return string
    *   The IPN validation URL.
    */
-  public function getIpnValidationUrl($ipn_data) {
+  public function getIpnValidationUrl(array $ipn_data) {
     if (!empty($ipn_data['test_ipn']) && $ipn_data['test_ipn'] == 1) {
       return 'https://www.sandbox.paypal.com/cgi-bin/webscr';
     }
@@ -110,4 +109,5 @@ trait PaypalPaymentGatewayTrait {
       return 'https://www.paypal.com/cgi-bin/webscr';
     }
   }
+
 }
