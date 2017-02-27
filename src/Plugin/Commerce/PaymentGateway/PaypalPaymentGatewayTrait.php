@@ -17,6 +17,9 @@ trait PaypalPaymentGatewayTrait {
    *
    * @return \Drupal\commerce_payment\Entity\PaymentInterface
    *   Payment object.
+   *
+   * @todo: to be replaced by Commerce core payment storage method
+   * @see https://www.drupal.org/node/2856209
    */
   public function loadPaymentByRemoteId($remote_id) {
     /** @var \Drupal\commerce_payment\PaymentStorage $storage */
@@ -35,24 +38,6 @@ trait PaypalPaymentGatewayTrait {
    *   The request data array or FALSE.
    */
   public function processIpnRequest(Request $request) {
-    // Validate and get IPN request data.
-    $ipn_data = $this->getIpnRequestValidate($request);
-
-    // ToDo other general validations for IPN data.
-    return $ipn_data;
-  }
-
-  /**
-   * Validate an incoming IPN request and return the request data for extra
-   * processing.
-   *
-   * @param Request $request
-   *   The request.
-   *
-   * @return mixed
-   *   The request data array or FALSE.
-   */
-  public function getIpnRequestValidate(Request $request) {
     // Get IPN request data.
     $ipn_data = $this->getRequestDataArray($request->getContent());
 
@@ -75,6 +60,8 @@ trait PaypalPaymentGatewayTrait {
       \Drupal::logger('commerce_paypal')->alert('Invalid IPN received and ignored.');
       return FALSE;
     }
+
+    // ToDo other general validations for IPN data.
     return $ipn_data;
   }
 
