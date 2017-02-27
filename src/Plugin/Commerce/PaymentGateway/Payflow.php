@@ -342,7 +342,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         // 'orderid' => $payment->getOrderId(),
       ]);
 
-      if ($data['result'] !== 0) {
+      if ($data['result'] !== '0') {
         throw new HardDeclineException('Could not charge the payment method. Response: ' . $data['respmsg'], $data['result']);
       }
 
@@ -384,7 +384,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         'origid' => $payment->getRemoteId(),
       ]);
 
-      if ($data['result'] !== 0) {
+      if ($data['result'] !== '0') {
         throw new PaymentGatewayException('Count not capture payment. Message: ' . $data['respmsg'], $data['result']);
       }
 
@@ -418,7 +418,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         'verbosity' => 'HIGH',
       ]);
 
-      if ($data['result'] !== 0) {
+      if ($data['result'] !== '0') {
         throw new PaymentGatewayException('Payment could not be voided. Message: ' . $data['respmsg'], $data['result']);
       }
 
@@ -505,7 +505,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         'billtocountry' => $address->getCountryCode(),
       ]);
 
-      if ($data['result'] !== 0) {
+      if ($data['result'] !== '0') {
         throw new HardDeclineException("Unable to verify the credit card: " . $data['respmsg'], $data['result']);
       }
 
