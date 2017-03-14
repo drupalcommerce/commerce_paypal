@@ -31,7 +31,7 @@ trait PaypalPaymentGatewayTrait {
   /**
    * Processes an incoming IPN request.
    *
-   * @param Request $request
+   * @param \Symfony\Component\HttpFoundation\Request $request
    *   The request.
    *
    * @return mixed
