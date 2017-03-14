@@ -134,19 +134,20 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
   public function validateConfigurationForm(array &$form, FormStateInterface $form_state) {
     parent::validateConfigurationForm($form, $form_state);
 
-    if (!$form_state->getErrors()) {
+    if (!$form_state->getErrors() && $form_state->isSubmitted()) {
       $values = $form_state->getValue($form['#parents']);
       $this->configuration['api_username'] = $values['api_username'];
       $this->configuration['api_password'] = $values['api_password'];
       $this->configuration['signature'] = $values['signature'];
       $this->configuration['solution_type'] = $values['solution_type'];
-    }
-    $response = $this->doRequest([
-      'METHOD' => 'GetBalance',
-    ]);
 
-    if ($response['ACK'] != 'Success') {
-      $form_state->setError($form['api_username'], $this->t('Invalid API credentials.'));
+      $response = $this->doRequest([
+        'METHOD' => 'GetBalance',
+      ]);
+
+      if ($response['ACK'] != 'Success') {
+        $form_state->setError($form, $this->t('Invalid API credentials.'));
+      }
     }
   }
 
