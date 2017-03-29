@@ -477,7 +477,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       'SOLUTIONTYPE' => 'Mark',
       'LANDINGPAGE' => 'Login',
 
-      // Disable entering notes in PayPal, as we don't have any way to accommodate
+      // Disable entering notes in PayPal, we don't have any way to accommodate
       // them right now.
       'ALLOWNOTE' => '0',
 
@@ -496,8 +496,8 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $nvp_data['TOKEN'] = $order_express_checkout_data['token'];
     }
 
-    // Get the order line items.
     $n = 0;
+    // Add order item data.
     foreach ($order->getItems() as $item) {
       $item_amount = $this->rounder->round($item->getUnitPrice());
       $nvp_data += [
@@ -508,9 +508,20 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $n++;
     }
 
-    // If reference transactions are enabled and a billing agreement is supplied...
-    if (!empty($configuration['reference_transactions']) &&
-      !empty($configuration['ba_desc'])) {
+    // Add all adjustments.
+    foreach ($order->collectAdjustments() as $adjustment) {
+      $adjustment_amount = $this->rounder->round($adjustment->getAmount());
+      $nvp_data += [
+        'L_PAYMENTREQUEST_0_NAME' . $n => $adjustment->getLabel(),
+        'L_PAYMENTREQUEST_0_AMT' . $n => $adjustment_amount->getNumber(),
+        'L_PAYMENTREQUEST_0_QTY' . $n => 1,
+      ];
+      $n++;
+    }
+
+    // Check if there is a reference transaction, and also see if a billing
+    // agreement was supplied.
+    if (!empty($configuration['reference_transactions']) && !empty($configuration['ba_desc'])) {
       $nvp_data['BILLINGTYPE'] = 'MerchantInitiatedBillingSingleAgreement';
       $nvp_data['L_BILLINGTYPE0'] = 'MerchantInitiatedBillingSingleAgreement';
       $nvp_data['L_BILLINGAGREEMENTDESCRIPTION0'] = $configuration['ba_desc'];
