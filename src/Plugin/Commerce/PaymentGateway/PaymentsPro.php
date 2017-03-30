@@ -11,6 +11,7 @@ use Drupal\commerce_payment\PaymentMethodTypeManager;
 use Drupal\commerce_payment\PaymentTypeManager;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OnsitePaymentGatewayBase;
 use Drupal\commerce_price\Price;
+use Drupal\commerce_price\RounderInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\State\StateInterface;
@@ -58,12 +59,20 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   protected $state;
 
   /**
+   * The rounder.
+   *
+   * @var \Drupal\commerce_price\RounderInterface
+   */
+  protected $rounder;
+
+  /**
    * {@inheritdoc}
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, ClientInterface $client, StateInterface $state) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, ClientInterface $client, StateInterface $state, RounderInterface $rounder) {
     parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager);
     $this->httpClient = $client;
     $this->state = $state;
+    $this->rounder = $rounder;
   }
 
   /**
@@ -78,7 +87,8 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       $container->get('plugin.manager.commerce_payment_type'),
       $container->get('plugin.manager.commerce_payment_method_type'),
       $container->get('http_client'),
-      $container->get('state')
+      $container->get('state'),
+      $container->get('commerce_price.rounder')
     );
   }
 
@@ -143,6 +153,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       throw new HardDeclineException('The provided payment method has expired');
     }
     $owner = $payment_method->getOwner();
+    $amount = $this->rounder->round($payment->getAmount());
 
     // Prepare the payments parameters.
     $parameters = [
@@ -160,8 +171,8 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       'transactions' => [
         [
           'amount' => [
-            'total' => $payment->getAmount()->getNumber(),
-            'currency' => $payment->getAmount()->getCurrencyCode(),
+            'total' => $amount->getNumber(),
+            'currency' => $amount->getCurrencyCode(),
           ],
         ],
       ],
@@ -238,6 +249,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
 
       // If not specified, capture the entire amount.
       $amount = $amount ?: $payment->getAmount();
+      $amount = $this->rounder->round($amount);
 
       // Instead of the remoteId, we need to pass the authorization ID, figure
       // out how to store it...
@@ -342,6 +354,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
     // TODO: check if more than 180 days.
     // If not specified, refund the entire amount.
     $amount = $amount ?: $payment->getAmount();
+    $amount = $this->rounder->round($amount);
     // Validate the requested amount.
     $balance = $payment->getBalance();
 

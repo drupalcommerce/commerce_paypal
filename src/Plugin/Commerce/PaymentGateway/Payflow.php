@@ -375,6 +375,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
 
     // If not specified, capture the entire amount.
     $amount = $amount ?: $payment->getAmount();
+    $amount = $this->rounder->round($amount);
 
     try {
       $data = $this->executeTransaction([
@@ -446,6 +447,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
 
     // If not specified, refund the entire amount.
     $amount = $amount ?: $payment->getAmount();
+    $amount = $this->rounder->round($amount);
 
     if ($amount->greaterThan($payment->getBalance())) {
       throw new InvalidRequestException(sprintf("Can't refund more than %s.", (string) $payment->getBalance()));
