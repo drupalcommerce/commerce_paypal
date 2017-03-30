@@ -10,7 +10,7 @@ use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\SupportsRefundsInterf
 /**
  * Provides the interface for the Express Checkout payment gateway.
  */
-interface ExpressCheckoutInterface extends PayPalIPNGatewayBaseInterface, SupportsAuthorizationsInterface, SupportsRefundsInterface {
+interface ExpressCheckoutInterface extends SupportsAuthorizationsInterface, SupportsRefundsInterface {
 
   /**
    * Gets the API URL.
@@ -35,12 +35,13 @@ interface ExpressCheckoutInterface extends PayPalIPNGatewayBaseInterface, Suppor
 
   /**
    * SetExpressCheckout API Operation (NVP) request.
+   *
    * Builds the data for the request and make the request.
    *
    * @param \Drupal\commerce_payment\Entity\PaymentInterface $payment
    *   The payment.
    * @param array $extra
-   *   Extra data needed for this request, ex.: cancel url, return url, transaction mode, etc....
+   *   Extra data needed for this request.
    *
    * @return array
    *   PayPal response data.

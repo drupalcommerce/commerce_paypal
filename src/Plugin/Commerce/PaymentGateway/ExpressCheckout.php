@@ -2,19 +2,24 @@
 
 namespace Drupal\commerce_paypal\Plugin\Commerce\PaymentGateway;
 
+use Drupal\commerce\TimeInterface;
 use Drupal\commerce_order\Entity\OrderInterface;
 use Drupal\commerce_payment\Entity\PaymentInterface;
 use Drupal\commerce_payment\Exception\InvalidRequestException;
 use Drupal\commerce_payment\Exception\PaymentGatewayException;
 use Drupal\commerce_payment\PaymentMethodTypeManager;
 use Drupal\commerce_payment\PaymentTypeManager;
+use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OffsitePaymentGatewayBase;
+use Drupal\commerce_paypal\IPNHandlerInterface;
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use GuzzleHttp\ClientInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
 
 /**
  * Provides the Paypal Express Checkout payment gateway.
@@ -32,7 +37,14 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  *   },
  * )
  */
-class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInterface {
+class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressCheckoutInterface {
+
+  /**
+   * The logger.
+   *
+   * @var \Drupal\Core\Logger\LoggerChannelInterface
+   */
+  protected $logger;
 
   /**
    * The HTTP client.
@@ -42,19 +54,59 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
   protected $httpClient;
 
   /**
-   * The rounder.
+   * The price rounder.
    *
    * @var \Drupal\commerce_price\RounderInterface
    */
   protected $rounder;
 
   /**
-   * {@inheritdoc}
+   * The time.
+   *
+   * @var \Drupal\commerce\TimeInterface
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, ClientInterface $client, RounderInterface $rounder) {
+  protected $time;
+
+  /**
+   * The IPN handler.
+   *
+   * @var \Drupal\commerce_paypal\IPNHandlerInterface
+   */
+  protected $ipnHandler;
+
+  /**
+   * Constructs a new PaymentGatewayBase object.
+   *
+   * @param array $configuration
+   *   A configuration array containing information about the plugin instance.
+   * @param string $plugin_id
+   *   The plugin_id for the plugin instance.
+   * @param mixed $plugin_definition
+   *   The plugin implementation definition.
+   * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
+   *   The entity type manager.
+   * @param \Drupal\commerce_payment\PaymentTypeManager $payment_type_manager
+   *   The payment type manager.
+   * @param \Drupal\commerce_payment\PaymentMethodTypeManager $payment_method_type_manager
+   *   The payment method type manager.
+   * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_channel_factory
+   *   The logger channel factory.
+   * @param \GuzzleHttp\ClientInterface $client
+   *   The client.
+   * @param \Drupal\commerce_price\RounderInterface $rounder
+   *   The price rounder.
+   * @param \Drupal\commerce\TimeInterface $time
+   *   The time.
+   * @param \Drupal\commerce_paypal\IPNHandlerInterface $ip_handler
+   *   The IPN handler.
+   */
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, LoggerChannelFactoryInterface $logger_channel_factory, ClientInterface $client, RounderInterface $rounder, TimeInterface $time, IPNHandlerInterface $ip_handler) {
     parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager);
+    $this->logger = $logger_channel_factory->get('commerce_paypal');
     $this->httpClient = $client;
     $this->rounder = $rounder;
+    $this->time = $time;
+    $this->ipnHandler = $ip_handler;
   }
 
   /**
@@ -68,8 +120,10 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
       $container->get('entity_type.manager'),
       $container->get('plugin.manager.commerce_payment_type'),
       $container->get('plugin.manager.commerce_payment_method_type'),
+      $container->get('logger.factory'),
       $container->get('http_client'),
-      $container->get('commerce_price.rounder')
+      $container->get('commerce_price.rounder'),
+      $container->get('commerce.time')
     );
   }
 
@@ -195,13 +249,13 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
     $paypal_response = $this->doExpressCheckoutDetails($order);
 
     // Nothing to do for failures for now - no payment saved.
-    // ToDo - more about the failures.
+    // @todo - more about the failures.
     if ($paypal_response['PAYMENTINFO_0_PAYMENTSTATUS'] == 'Failed') {
       throw new PaymentGatewayException($paypal_response['PAYMENTINFO_0_LONGMESSAGE'], $paypal_response['PAYMENTINFO_0_ERRORCODE']);
     }
 
     $payment_storage = $this->entityTypeManager->getStorage('commerce_payment');
-    $request_time = \Drupal::service('commerce.time')->getRequestTime();
+    $request_time = $this->time->getRequestTime();
     $payment = $payment_storage->create([
       'state' => 'authorization',
       'amount' => $order->getTotalPrice(),
@@ -214,7 +268,7 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
     ]);
 
     // Process payment status received.
-    // ToDo : payment updates if needed.
+    // @todo payment updates if needed.
     // If we didn't get an approval response code...
     switch ($paypal_response['PAYMENTINFO_0_PAYMENTSTATUS']) {
       case 'Voided':
@@ -349,21 +403,18 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
    */
   public function onNotify(Request $request) {
     // Get IPN request data and basic processing for the IPN request.
-    $ipn_data = $this->processIpnRequest($request);
-    if (!$ipn_data) {
-      return FALSE;
-    }
+    $ipn_data = $this->ipnHandler->process($request);
 
     // Do not perform any processing on EC transactions here that do not have
     // transaction IDs, indicating they are non-payment IPNs such as those used
     // for subscription signup requests.
     if (empty($ipn_data['txn_id'])) {
-      \Drupal::logger('commerce_paypal')->alert('The IPN request does not have a transaction id. Ignored.');
+      $this->logger->alert('The IPN request does not have a transaction id. Ignored.');
       return FALSE;
     }
     // Exit when we don't get a payment status we recognize.
     if (!in_array($ipn_data['payment_status'], ['Failed', 'Voided', 'Pending', 'Completed', 'Refunded'])) {
-      return FALSE;
+      throw new BadRequestHttpException('Invalid payment status');
     }
     // If this is a prior authorization capture IPN...
     if (in_array($ipn_data['payment_status'], ['Voided', 'Pending', 'Completed']) && !empty($ipn_data['auth_id'])) {
@@ -372,7 +423,7 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
       // If not, bail now because authorization transactions should be created
       // by the Express Checkout API request itself.
       if (!$payment) {
-        \Drupal::logger('commerce_paypal')->warning('IPN for Order @order_number ignored: authorization transaction already created.', ['@order_number' => $ipn_data['invoice']]);
+        $this->logger->warning('IPN for Order @order_number ignored: authorization transaction already created.', ['@order_number' => $ipn_data['invoice']]);
         return FALSE;
       }
       $amount = new Price($ipn_data['mc_gross'], $ipn_data['mc_currency']);
@@ -389,7 +440,7 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
 
         case 'Completed':
           $payment->state = 'capture_completed';
-          $payment->setCapturedTime(REQUEST_TIME);
+          $payment->setCapturedTime($this->time->getRequestTime());
           break;
       }
       // Update the remote id.
@@ -399,15 +450,14 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
       // Get the corresponding parent transaction and refund it.
       $payment = $this->loadPaymentByRemoteId($ipn_data['parent_txn_id']);
       if (!$payment) {
-        \Drupal::logger('commerce_paypal')->warning('IPN for Order @order_number ignored: the transaction to be refunded does not exist.', ['@order_number' => $ipn_data['invoice']]);
+        $this->logger->warning('IPN for Order @order_number ignored: the transaction to be refunded does not exist.', ['@order_number' => $ipn_data['invoice']]);
         return FALSE;
       }
       elseif ($payment->getState() == 'capture_refunded') {
-        \Drupal::logger('commerce_paypal')->warning('IPN for Order @order_number ignored: the transaction is already refunded.', ['@order_number' => $ipn_data['invoice']]);
+        $this->logger->warning('IPN for Order @order_number ignored: the transaction is already refunded.', ['@order_number' => $ipn_data['invoice']]);
         return FALSE;
       }
-      $amount_number = abs($ipn_data['mc_gross']);
-      $amount = new Price((string) $amount_number, $ipn_data['mc_currency']);
+      $amount = new Price((string) $ipn_data['mc_gross'], $ipn_data['mc_currency']);
       // Check if the Refund is partial or full.
       $old_refunded_amount = $payment->getRefundedAmount();
       $new_refunded_amount = $old_refunded_amount->add($amount);
@@ -425,7 +475,7 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
     else {
       // In other circumstances, exit the processing, because we handle those
       // cases directly during API response processing.
-      \Drupal::logger('commerce_paypal')->notice('IPN for Order @order_number ignored: this operation was accommodated in the direct API response.', ['@order_number' => $ipn_data['invoice']]);
+      $this->logger->notice('IPN for Order @order_number ignored: this operation was accommodated in the direct API response.', ['@order_number' => $ipn_data['invoice']]);
       return FALSE;
     }
     if (isset($payment)) {
@@ -681,6 +731,25 @@ class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInt
     parse_str(html_entity_decode($request), $paypal_response);
 
     return $paypal_response;
+  }
+
+  /**
+   * Loads the payment for a given remote id.
+   *
+   * @param string $remote_id
+   *   The remote id property for a payment.
+   *
+   * @return \Drupal\commerce_payment\Entity\PaymentInterface
+   *   Payment object.
+   *
+   * @todo: to be replaced by Commerce core payment storage method
+   * @see https://www.drupal.org/node/2856209
+   */
+  protected function loadPaymentByRemoteId($remote_id) {
+    /** @var \Drupal\commerce_payment\PaymentStorage $storage */
+    $storage = $this->entityTypeManager->getStorage('commerce_payment');
+    $payment_by_remote_id = $storage->loadByProperties(['remote_id' => $remote_id]);
+    return reset($payment_by_remote_id);
   }
 
 }
