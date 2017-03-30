@@ -2,24 +2,16 @@
 
 namespace Drupal\commerce_paypal\Plugin\Commerce\PaymentGateway;
 
+use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OffsitePaymentGatewayBase;
 use Symfony\Component\HttpFoundation\Request;
 
 /**
  * Provides common methods to be used by PayPal payment gateways.
  */
-trait PaypalPaymentGatewayTrait {
+abstract class PayPalIPNGatewayBase extends OffsitePaymentGatewayBase implements PayPalIPNGatewayBaseInterface {
 
   /**
-   * Loads the payment for a given remote id.
-   *
-   * @param string $remote_id
-   *   The remote id property for a payment.
-   *
-   * @return \Drupal\commerce_payment\Entity\PaymentInterface
-   *   Payment object.
-   *
-   * @todo: to be replaced by Commerce core payment storage method
-   * @see https://www.drupal.org/node/2856209
+   * {@inheritdoc}
    */
   public function loadPaymentByRemoteId($remote_id) {
     /** @var \Drupal\commerce_payment\PaymentStorage $storage */
@@ -29,13 +21,7 @@ trait PaypalPaymentGatewayTrait {
   }
 
   /**
-   * Processes an incoming IPN request.
-   *
-   * @param \Symfony\Component\HttpFoundation\Request $request
-   *   The request.
-   *
-   * @return mixed
-   *   The request data array or FALSE.
+   * {@inheritdoc}
    */
   public function processIpnRequest(Request $request) {
     // Get IPN request data.
@@ -66,13 +52,7 @@ trait PaypalPaymentGatewayTrait {
   }
 
   /**
-   * Get data array from a request content.
-   *
-   * @param string $request_content
-   *   The Request content.
-   *
-   * @return array
-   *   The request data array.
+   * {@inheritdoc}
    */
   public function getRequestDataArray($request_content) {
     parse_str(html_entity_decode($request_content), $ipn_data);
@@ -80,13 +60,7 @@ trait PaypalPaymentGatewayTrait {
   }
 
   /**
-   * Gets the IPN URL to be used for validation for IPN data.
-   *
-   * @param array $ipn_data
-   *   The IPN request data from PayPal.
-   *
-   * @return string
-   *   The IPN validation URL.
+   * {@inheritdoc}
    */
   public function getIpnValidationUrl(array $ipn_data) {
     if (!empty($ipn_data['test_ipn']) && $ipn_data['test_ipn'] == 1) {

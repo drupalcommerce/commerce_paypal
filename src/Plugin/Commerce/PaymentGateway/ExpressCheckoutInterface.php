@@ -11,7 +11,7 @@ use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\SupportsRefundsInterf
 /**
  * Provides the interface for the Express Checkout payment gateway.
  */
-interface ExpressCheckoutInterface extends OffsitePaymentGatewayInterface, SupportsAuthorizationsInterface, SupportsRefundsInterface {
+interface ExpressCheckoutInterface extends PayPalIPNGatewayBaseInterface, SupportsAuthorizationsInterface, SupportsRefundsInterface {
 
   /**
    * Gets the API URL.

@@ -8,7 +8,6 @@ use Drupal\commerce_payment\Exception\InvalidRequestException;
 use Drupal\commerce_payment\Exception\PaymentGatewayException;
 use Drupal\commerce_payment\PaymentMethodTypeManager;
 use Drupal\commerce_payment\PaymentTypeManager;
-use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OffsitePaymentGatewayBase;
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
@@ -33,9 +32,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  *   },
  * )
  */
-class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressCheckoutInterface {
-
-  use PaypalPaymentGatewayTrait;
+class ExpressCheckout extends PayPalIPNGatewayBase implements ExpressCheckoutInterface {
 
   /**
    * The HTTP client.
