@@ -123,7 +123,8 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $container->get('logger.factory'),
       $container->get('http_client'),
       $container->get('commerce_price.rounder'),
-      $container->get('commerce.time')
+      $container->get('commerce.time'),
+      $container->get('commerce_paypal.ipn_handler')
     );
   }
 
