@@ -191,6 +191,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $this->configuration['api_password'] = $values['api_password'];
       $this->configuration['signature'] = $values['signature'];
       $this->configuration['solution_type'] = $values['solution_type'];
+      $this->configuration['mode'] = $values['mode'];
 
       $response = $this->doRequest([
         'METHOD' => 'GetBalance',
