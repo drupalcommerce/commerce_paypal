@@ -2,7 +2,7 @@
 
 namespace Drupal\commerce_paypal\Plugin\Commerce\PaymentGateway;
 
-use Drupal\commerce\TimeInterface;
+use Drupal\Component\Datetime\TimeInterface;
 use Drupal\commerce_order\Entity\OrderInterface;
 use Drupal\commerce_payment\Entity\PaymentInterface;
 use Drupal\commerce_payment\Exception\InvalidRequestException;
@@ -123,7 +123,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $container->get('logger.factory'),
       $container->get('http_client'),
       $container->get('commerce_price.rounder'),
-      $container->get('commerce.time'),
+      $container->get('datetime.time'),
       $container->get('commerce_paypal.ipn_handler')
     );
   }
