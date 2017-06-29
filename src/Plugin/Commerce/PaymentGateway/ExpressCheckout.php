@@ -540,11 +540,6 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       'CANCELURL' => $extra['cancel_url'],
     ];
 
-    $order_express_checkout_data = $order->getData('paypal_express_checkout');
-    if (!empty($order_express_checkout_data['token'])) {
-      $nvp_data['TOKEN'] = $order_express_checkout_data['token'];
-    }
-
     $n = 0;
     // Add order item data.
     foreach ($order->getItems() as $item) {
