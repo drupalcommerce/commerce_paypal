@@ -7,6 +7,9 @@ commerce_payment.commerce_payment_gateway.plugin.paypal_express_checkout:
     api_password:
       type: string
       label: 'API Password'
+    shipping_prompt:
+      type: string
+      label: 'Shipping address collection'
     signature:
       type: string
       label: 'Signature'

@@ -14,6 +14,7 @@ use Drupal\commerce_paypal\IPNHandlerInterface;
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
+use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use GuzzleHttp\ClientInterface;
@@ -39,6 +40,11 @@ use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
  */
 class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressCheckoutInterface {
 
+  // Shipping address collection options.
+  const SHIPPING_ASK_ALWAYS = 'shipping_ask_always';
+  const SHIPPING_ASK_NOT_PRESENT = 'shipping_ask_not_present';
+  const SHIPPING_SKIP = 'shipping_skip';
+
   /**
    * The logger.
    *
@@ -63,7 +69,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
   /**
    * The time.
    *
-   * @var \Drupal\commerce\TimeInterface
+   * @var \Drupal\Component\Datetime\TimeInterface
    */
   protected $time;
 
@@ -73,6 +79,13 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    * @var \Drupal\commerce_paypal\IPNHandlerInterface
    */
   protected $ipnHandler;
+
+  /**
+   * Module handler service.
+   *
+   * @var \Drupal\Core\Extension\ModuleHandlerInterface
+   */
+  protected $moduleHandler;
 
   /**
    * Constructs a new PaymentGatewayBase object.
@@ -95,18 +108,21 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    *   The client.
    * @param \Drupal\commerce_price\RounderInterface $rounder
    *   The price rounder.
-   * @param \Drupal\commerce\TimeInterface $time
+   * @param \Drupal\Component\Datetime\TimeInterface $time
    *   The time.
    * @param \Drupal\commerce_paypal\IPNHandlerInterface $ip_handler
    *   The IPN handler.
+   * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
+   *   The module handler.
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, LoggerChannelFactoryInterface $logger_channel_factory, ClientInterface $client, RounderInterface $rounder, TimeInterface $time, IPNHandlerInterface $ip_handler) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, LoggerChannelFactoryInterface $logger_channel_factory, ClientInterface $client, RounderInterface $rounder, TimeInterface $time, IPNHandlerInterface $ip_handler, ModuleHandlerInterface $module_handler) {
     parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager);
     $this->logger = $logger_channel_factory->get('commerce_paypal');
     $this->httpClient = $client;
     $this->rounder = $rounder;
     $this->time = $time;
     $this->ipnHandler = $ip_handler;
+    $this->moduleHandler = $module_handler;
   }
 
   /**
@@ -124,7 +140,8 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $container->get('http_client'),
       $container->get('commerce_price.rounder'),
       $container->get('datetime.time'),
-      $container->get('commerce_paypal.ipn_handler')
+      $container->get('commerce_paypal.ipn_handler'),
+      $container->get('module_handler')
     );
   }
 
@@ -135,6 +152,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     return [
       'api_username' => '',
       'api_password' => '',
+      'shipping_prompt' => self::SHIPPING_SKIP,
       'signature' => '',
       'solution_type' => 'Mark',
     ] + parent::defaultConfiguration();
@@ -177,6 +195,23 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       '#default_value' => $this->configuration['solution_type'],
     ];
 
+    $form['shipping_prompt'] = [
+      '#type' => 'radios',
+      '#title' => $this->t('Shipping address collection'),
+      '#description' => $this->t('Express Checkout will only request a shipping address if the Shipping module is enabled to store the address in the order.'),
+      '#options' => [
+        self::SHIPPING_SKIP => $this->t('Do not ask for a shipping address at PayPal.'),
+      ],
+      '#default_value' => $this->configuration['shipping_prompt'],
+    ];
+
+    if ($this->moduleHandler->moduleExists('commerce_shipping')) {
+      $form['shipping_prompt']['#options'] += [
+        self::SHIPPING_ASK_NOT_PRESENT => $this->t('Ask for a shipping address at PayPal if the order does not have one yet.'),
+        self::SHIPPING_ASK_ALWAYS => $this->t('Ask for a shipping address at PayPal even if the order already has one.'),
+      ];
+    }
+
     return $form;
   }
 
@@ -215,6 +250,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $this->configuration['api_password'] = $values['api_password'];
       $this->configuration['signature'] = $values['signature'];
       $this->configuration['solution_type'] = $values['solution_type'];
+      $this->configuration['shipping_prompt'] = $values['shipping_prompt'];
     }
   }
 
@@ -581,19 +617,73 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       }
     }
 
-    // @todo Shipping data.
-    $nvp_data['NOSHIPPING'] = '1';
+    // If the shipping module is not enabled, or if
+    // "Shipping address collection" is configured to not send the address to
+    // Paypal, set the NOSHIPPING parameter to 1.
+    if ($configuration['shipping_prompt'] == self::SHIPPING_SKIP || !$this->moduleHandler->moduleExists('commerce_shipping')) {
+      $nvp_data['NOSHIPPING'] = '1';
+    }
+    else {
+      // Check if the order references shipments.
+      if ($order->hasField('shipments') && !$order->get('shipments')->isEmpty()) {
+        // Gather the shipping profiles and only send shipping information if
+        // there's only one shipping profile referenced by the shipments.
+        $shipping_profiles = [];
 
-    // Overrides specific values for the BML payment method.
-    if ($flow == 'bml') {
-      $nvp_data['USERSELECTEDFUNDINGSOURCE'] = 'BML';
-      $nvp_data['SOLUTIONTYPE'] = 'SOLE';
-      $nvp_data['LANDINGPAGE'] = 'BILLING';
+        // Loop over the shipments to collect shipping profiles.
+        foreach ($order->get('shipments')->referencedEntities() as $shipment) {
+          if ($shipment->get('shipping_profile')->isEmpty()) {
+            continue;
+          }
+          $shipping_profile = $shipment->getShippingProfile();
+          $shipping_profiles[$shipping_profile->id()] = $shipping_profile;
+        }
+
+        // Don't send the shipping profile if we found more than one.
+        if ($shipping_profiles && count($shipping_profiles) === 1) {
+          $shipping_profile = reset($shipping_profiles);
+          /** @var \Drupal\address\AddressInterface $address */
+          $address = $shipping_profile->address->first();
+          $name = $address->getGivenName() . ' ' . $address->getFamilyName();
+          $shipping_info = [
+            'PAYMENTREQUEST_0_SHIPTONAME' => substr($name, 0, 32),
+            'PAYMENTREQUEST_0_SHIPTOSTREET' => substr($address->getAddressLine1(), 0, 100),
+            'PAYMENTREQUEST_0_SHIPTOSTREET2' => substr($address->getAddressLine2(), 0, 100),
+            'PAYMENTREQUEST_0_SHIPTOCITY' => substr($address->getLocality(), 0, 40),
+            'PAYMENTREQUEST_0_SHIPTOSTATE' => substr($address->getAdministrativeArea(), 0, 40),
+            'PAYMENTREQUEST_0_SHIPTOCOUNTRYCODE' => $address->getCountryCode(),
+            'PAYMENTREQUEST_0_SHIPTOZIP' => substr($address->getPostalCode(), 0, 20),
+          ];
+          // Filter out empty values.
+          $nvp_data += array_filter($shipping_info);
+
+          // Do not prompt for an Address at Paypal.
+          if ($configuration['shipping_prompt'] != self::SHIPPING_ASK_ALWAYS) {
+            $nvp_data += [
+              'NOSHIPPING' => '1',
+              'ADDROVERRIDE' => '1',
+            ];
+          }
+          else {
+            $nvp_data += [
+              'NOSHIPPING' => '0',
+              'ADDROVERRIDE' => '0',
+            ];
+          }
+        }
+        else {
+          $nvp_data['NOSHIPPING'] = '0';
+        }
+      }
+    }
+
+    // Send the order's email if not empty.
+    if (!empty($order->getEmail())) {
+      $nvp_data['PAYMENTREQUEST_0_EMAIL'] = $order->getEmail();
     }
 
     // Make the PayPal NVP API request.
     return $this->doRequest($nvp_data);
-
   }
 
   /**
