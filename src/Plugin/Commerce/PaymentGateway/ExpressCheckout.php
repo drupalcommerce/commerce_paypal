@@ -2,7 +2,8 @@
 
 namespace Drupal\commerce_paypal\Plugin\Commerce\PaymentGateway;
 
-use Drupal\Component\Datetime\TimeInterface;
+use Drupal\commerce_paypal\Event\ExpressCheckoutRequestEvent;
+use Drupal\commerce_paypal\Event\PayPalEvents;
 use Drupal\commerce_order\Entity\OrderInterface;
 use Drupal\commerce_payment\Entity\PaymentInterface;
 use Drupal\commerce_payment\Exception\InvalidRequestException;
@@ -13,11 +14,13 @@ use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OffsitePaymentGateway
 use Drupal\commerce_paypal\IPNHandlerInterface;
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
+use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Extension\ModuleHandlerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Logger\LoggerChannelFactoryInterface;
 use GuzzleHttp\ClientInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Symfony\Component\HttpKernel\Exception\BadRequestHttpException;
@@ -88,6 +91,13 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
   protected $moduleHandler;
 
   /**
+   * The event dispatcher.
+   *
+   * @var \Symfony\Component\EventDispatcher\EventDispatcherInterface
+   */
+  protected $eventDispatcher;
+
+  /**
    * Constructs a new PaymentGatewayBase object.
    *
    * @param array $configuration
@@ -114,8 +124,10 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    *   The IPN handler.
    * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
    *   The module handler.
+   * @param \Symfony\Component\EventDispatcher\EventDispatcherInterface $event_dispatcher
+   *   The event dispatcher.
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, LoggerChannelFactoryInterface $logger_channel_factory, ClientInterface $client, RounderInterface $rounder, TimeInterface $time, IPNHandlerInterface $ip_handler, ModuleHandlerInterface $module_handler) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, LoggerChannelFactoryInterface $logger_channel_factory, ClientInterface $client, RounderInterface $rounder, TimeInterface $time, IPNHandlerInterface $ip_handler, ModuleHandlerInterface $module_handler, EventDispatcherInterface $event_dispatcher) {
     parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager);
     $this->logger = $logger_channel_factory->get('commerce_paypal');
     $this->httpClient = $client;
@@ -123,6 +135,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     $this->time = $time;
     $this->ipnHandler = $ip_handler;
     $this->moduleHandler = $module_handler;
+    $this->eventDispatcher = $event_dispatcher;
   }
 
   /**
@@ -141,7 +154,8 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $container->get('commerce_price.rounder'),
       $container->get('datetime.time'),
       $container->get('commerce_paypal.ipn_handler'),
-      $container->get('module_handler')
+      $container->get('module_handler'),
+      $container->get('event_dispatcher')
     );
   }
 
@@ -719,7 +733,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     }
 
     // Make the PayPal NVP API request.
-    return $this->doRequest($nvp_data);
+    return $this->doRequest($nvp_data, $order);
   }
 
   /**
@@ -736,7 +750,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     ];
 
     // Make the PayPal NVP API request.
-    return $this->doRequest($nvp_data);
+    return $this->doRequest($nvp_data, $order);
 
   }
 
@@ -764,7 +778,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     ];
 
     // Make the PayPal NVP API request.
-    return $this->doRequest($nvp_data);
+    return $this->doRequest($nvp_data, $order);
 
   }
 
@@ -785,7 +799,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     ];
 
     // Make the PayPal NVP API request.
-    return $this->doRequest($nvp_data);
+    return $this->doRequest($nvp_data, $payment->getOrder());
 
   }
 
@@ -800,7 +814,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     ];
 
     // Make the PayPal NVP API request.
-    return $this->doRequest($nvp_data);
+    return $this->doRequest($nvp_data, $payment->getOrder());
 
   }
 
@@ -808,7 +822,6 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    * {@inheritdoc}
    */
   public function doRefundTransaction(PaymentInterface $payment, array $extra) {
-
     // Build a name-value pair array for this transaction.
     $nvp_data = [
       'METHOD' => 'RefundTransaction',
@@ -819,14 +832,14 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     ];
 
     // Make the PayPal NVP API request.
-    return $this->doRequest($nvp_data);
+    return $this->doRequest($nvp_data, $payment->getOrder());
 
   }
 
   /**
    * {@inheritdoc}
    */
-  public function doRequest(array $nvp_data) {
+  public function doRequest(array $nvp_data, OrderInterface $order = NULL) {
     // Add the default name-value pairs to the array.
     $configuration = $this->getConfiguration();
     $nvp_data += [
@@ -845,6 +858,10 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $url = 'https://api-3t.paypal.com/nvp';
     }
 
+    // Allow modules to alter the NVP request.
+    $event = new ExpressCheckoutRequestEvent($nvp_data, $order);
+    $this->eventDispatcher->dispatch(PayPalEvents::EXPRESS_CHECKOUT_REQUEST, $event);
+    $nvp_data = $event->getNvpData();
     // Make PayPal request.
     $request = $this->httpClient->post($url, [
       'form_params' => $nvp_data,

@@ -1,0 +1,5 @@
+services:
+  commerce_paypal_test.express_checkout_request_subscriber:
+    class: Drupal\commerce_paypal_test\EventSubscriber\ExpressCheckoutRequestSubscriber
+    tags:
+      - { name: event_subscriber }

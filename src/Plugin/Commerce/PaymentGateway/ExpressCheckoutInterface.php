@@ -25,13 +25,15 @@ interface ExpressCheckoutInterface extends SupportsAuthorizationsInterface, Supp
    *
    * @param array $nvp_data
    *   The NVP API data array as documented.
+   * @param \Drupal\commerce_order\Entity\OrderInterface $order
+   *   The order entity, or null.
    *
    * @return array
    *   PayPal response data.
    *
    * @see https://developer.paypal.com/docs/classic/api/#express-checkout
    */
-  public function doRequest(array $nvp_data);
+  public function doRequest(array $nvp_data, OrderInterface $order = NULL);
 
   /**
    * SetExpressCheckout API Operation (NVP) request.

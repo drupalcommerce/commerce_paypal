@@ -1,0 +1,6 @@
+name: Commerce PayPal Test
+type: module
+description: 'Test module that provides a sample Event subscriber to alter the PayPal EC request.'
+core: 8.x
+dependencies:
+  - commerce_paypal
