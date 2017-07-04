@@ -18,7 +18,15 @@ interface ExpressCheckoutInterface extends SupportsAuthorizationsInterface, Supp
    * @return string
    *   The API URL.
    */
-  public function getUrl();
+  public function getApiUrl();
+
+  /**
+   * Gets the redirect URL.
+   *
+   * @return string
+   *   The redirect URL.
+   */
+  public function getRedirectUrl();
 
   /**
    * Performs a PayPal Express Checkout NVP API request.

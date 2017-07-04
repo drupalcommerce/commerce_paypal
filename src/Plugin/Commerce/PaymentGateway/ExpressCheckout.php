@@ -542,12 +542,24 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
   /**
    * {@inheritdoc}
    */
-  public function getUrl() {
+  public function getRedirectUrl() {
     if ($this->getMode() == 'test') {
       return 'https://www.sandbox.paypal.com/checkoutnow';
     }
     else {
       return 'https://www.paypal.com/checkoutnow';
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getApiUrl() {
+    if ($this->getMode() == 'test') {
+      return 'https://api-3t.sandbox.paypal.com/nvp';
+    }
+    else {
+      return 'https://api-3t.paypal.com/nvp';
     }
   }
 
@@ -850,20 +862,12 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       'VERSION' => '124.0',
     ];
 
-    $mode = $this->getMode();
-    if ($mode == 'test') {
-      $url = 'https://api-3t.sandbox.paypal.com/nvp';
-    }
-    else {
-      $url = 'https://api-3t.paypal.com/nvp';
-    }
-
     // Allow modules to alter the NVP request.
     $event = new ExpressCheckoutRequestEvent($nvp_data, $order);
     $this->eventDispatcher->dispatch(PayPalEvents::EXPRESS_CHECKOUT_REQUEST, $event);
     $nvp_data = $event->getNvpData();
     // Make PayPal request.
-    $request = $this->httpClient->post($url, [
+    $request = $this->httpClient->post($this->getApiUrl(), [
       'form_params' => $nvp_data,
     ])->getBody()
       ->getContents();

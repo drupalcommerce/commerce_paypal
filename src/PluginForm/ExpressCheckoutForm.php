@@ -42,7 +42,7 @@ class ExpressCheckoutForm extends BasePaymentOffsiteForm {
       throw new PaymentGatewayException('Payment request to PayPal failed. Response: ' . $paypal_response['L_SHORTMESSAGE0']);
     }
 
-    $redirect_url = $payment_gateway_plugin->getUrl();
+    $redirect_url = $payment_gateway_plugin->getRedirectUrl();
     $data = [
       'token' => $paypal_response['TOKEN'],
       'return' => $form['#return_url'],
