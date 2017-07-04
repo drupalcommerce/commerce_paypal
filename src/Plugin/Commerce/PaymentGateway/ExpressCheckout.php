@@ -579,7 +579,6 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $payment_action = 'Authorization';
     }
 
-    $flow = 'ec';
     // Build a name-value pair array for this transaction.
     $nvp_data = [
       'METHOD' => 'SetExpressCheckout',
@@ -602,65 +601,6 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       'CANCELURL' => $extra['cancel_url'],
     ];
 
-    $n = 0;
-    // Calculate the items total.
-    $items_total = new Price('0', $amount->getCurrencyCode());
-    // Add order item data.
-    foreach ($order->getItems() as $item) {
-      $item_amount = $this->rounder->round($item->getUnitPrice());
-      $nvp_data += [
-        'L_PAYMENTREQUEST_0_NAME' . $n => $item->getTitle(),
-        'L_PAYMENTREQUEST_0_AMT' . $n => $item_amount->getNumber(),
-        'L_PAYMENTREQUEST_0_QTY' . $n => $item->getQuantity(),
-      ];
-      $items_total = $items_total->add($item->getTotalPrice());
-      $n++;
-    }
-
-    // Send the items total.
-    $items_total = $this->rounder->round($items_total);
-    $nvp_data['PAYMENTREQUEST_0_ITEMAMT'] = $items_total->getNumber();
-
-    // Initialize Shipping|Tax prices, they need to be sent
-    // separately to Paypal.
-    $shipping_amount = new Price('0', $amount->getCurrencyCode());
-    $tax_amount = new Price('0', $amount->getCurrencyCode());
-
-    // Add all adjustments.
-    foreach ($order->collectAdjustments() as $adjustment) {
-      // Tax & Shipping adjustments need to be handled separately.
-      if ($adjustment->getType() == 'shipping') {
-        $shipping_amount = $shipping_amount->add($adjustment->getAmount());
-      }
-      // Add taxes that are not included in the items total.
-      elseif ($adjustment->getType() == 'tax') {
-        if (!$adjustment->isIncluded()) {
-          $tax_amount = $tax_amount->add($adjustment->getAmount());
-        }
-      }
-      else {
-        $adjustment_amount = $this->rounder->round($adjustment->getAmount());
-        $nvp_data += [
-          'L_PAYMENTREQUEST_0_NAME' . $n => $adjustment->getLabel(),
-          'L_PAYMENTREQUEST_0_AMT' . $n => $adjustment_amount->getNumber(),
-          'L_PAYMENTREQUEST_0_QTY' . $n => 1,
-        ];
-        $n++;
-      }
-    }
-
-    // Send the shipping amount separately.
-    if (!$shipping_amount->isZero()) {
-      $shipping_amount = $this->rounder->round($shipping_amount);
-      $nvp_data['PAYMENTREQUEST_0_SHIPPINGAMT'] = $shipping_amount->getNumber();
-    }
-
-    // Send the tax amount.
-    if (!$tax_amount->isZero()) {
-      $tax_amount = $this->rounder->round($tax_amount);
-      $nvp_data['PAYMENTREQUEST_0_TAXAMT'] = $tax_amount->getNumber();
-    }
-
     // Check if there is a reference transaction, and also see if a billing
     // agreement was supplied.
     if (!empty($configuration['reference_transactions']) && !empty($configuration['ba_desc'])) {
@@ -679,9 +619,12 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       }
     }
 
+    // Add itemized information to the API request.
+    $nvp_data += $this->itemizeOrder($order, $amount->getCurrencyCode());
+
     // If the shipping module is not enabled, or if
     // "Shipping address collection" is configured to not send the address to
-    // Paypal, set the NOSHIPPING parameter to 1.
+    // PayPal, set the NOSHIPPING parameter to 1.
     if ($configuration['shipping_prompt'] == self::SHIPPING_SKIP || !$this->moduleHandler->moduleExists('commerce_shipping')) {
       $nvp_data['NOSHIPPING'] = '1';
     }
@@ -746,6 +689,112 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
 
     // Make the PayPal NVP API request.
     return $this->doRequest($nvp_data, $order);
+  }
+
+  /**
+   * Returns a name-value pair array of information to the API request.
+   *
+   * @param \Drupal\commerce_order\Entity\OrderInterface $order
+   *   The order entity.
+   * @param string $currency_code
+   *   The currency code.
+   *
+   * @return array
+   *   A name-value pair array.
+   */
+  protected function itemizeOrder(OrderInterface $order, $currency_code) {
+    $nvp_data = [];
+    $n = 0;
+    // Calculate the items total.
+    $items_total = new Price('0', $currency_code);
+
+    // Add order item data.
+    foreach ($order->getItems() as $item) {
+      $item_amount = $this->rounder->round($item->getUnitPrice());
+      $nvp_data += [
+        'L_PAYMENTREQUEST_0_NAME' . $n => $item->getTitle(),
+        'L_PAYMENTREQUEST_0_AMT' . $n => $item_amount->getNumber(),
+        'L_PAYMENTREQUEST_0_QTY' . $n => $item->getQuantity(),
+      ];
+      $items_total = $items_total->add($item->getTotalPrice());
+      $n++;
+    }
+
+    // Initialize Shipping|Tax prices, they need to be sent
+    // separately to PayPal.
+    $shipping_amount = new Price('0', $currency_code);
+    $tax_amount = new Price('0', $currency_code);
+
+    // Collect the adjustments.
+    $adjustments = [];
+    foreach ($order->collectAdjustments() as $adjustment) {
+      // Skip included adjustments.
+      if ($adjustment->isIncluded()) {
+        continue;
+      }
+      // Tax & Shipping adjustments need to be handled separately.
+      if ($adjustment->getType() == 'shipping') {
+        $shipping_amount = $shipping_amount->add($adjustment->getAmount());
+      }
+      // Add taxes that are not included in the items total.
+      elseif ($adjustment->getType() == 'tax') {
+        $tax_amount = $tax_amount->add($adjustment->getAmount());
+      }
+      else {
+        // Collect other adjustments.
+        $type = $adjustment->getType();
+        $source_id = $adjustment->getSourceId();
+        if (empty($source_id)) {
+          // Adjustments without a source ID are always shown standalone.
+          $key = count($adjustments);
+        }
+        else {
+          // Adjustments with the same type and source ID are combined.
+          $key = $type . '_' . $source_id;
+        }
+
+        if (empty($adjustments[$key])) {
+          $adjustments[$key] = [
+            'type' => $type,
+            'label' => (string) $adjustment->getLabel(),
+            'total' => $adjustment->getAmount(),
+          ];
+        }
+        else {
+          $adjustments[$key]['total'] = $adjustments[$key]['total']->add($adjustment->getAmount());
+        }
+      }
+    }
+
+    foreach ($adjustments as $adjustment) {
+      $adjustment_amount = $this->rounder->round($adjustment['total']);
+      $nvp_data += [
+        'L_PAYMENTREQUEST_0_NAME' . $n => $adjustment['label'],
+        'L_PAYMENTREQUEST_0_AMT' . $n => $adjustment_amount->getNumber(),
+        'L_PAYMENTREQUEST_0_QTY' . $n => 1,
+      ];
+      // Add the adjustment to the items total.
+      $items_total = $items_total->add($adjustment['total']);
+      $n++;
+    }
+
+    // Send the items total.
+    $items_total = $this->rounder->round($items_total);
+    $nvp_data['PAYMENTREQUEST_0_ITEMAMT'] = $items_total->getNumber();
+
+    // Send the shipping amount separately.
+    if (!$shipping_amount->isZero()) {
+      $shipping_amount = $this->rounder->round($shipping_amount);
+      $nvp_data['PAYMENTREQUEST_0_SHIPPINGAMT'] = $shipping_amount->getNumber();
+    }
+
+    // Send the tax amount.
+    if (!$tax_amount->isZero()) {
+      $tax_amount = $this->rounder->round($tax_amount);
+      $nvp_data['PAYMENTREQUEST_0_TAXAMT'] = $tax_amount->getNumber();
+    }
+
+    return $nvp_data;
   }
 
   /**
