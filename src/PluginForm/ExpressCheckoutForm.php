@@ -24,25 +24,22 @@ class ExpressCheckoutForm extends BasePaymentOffsiteForm {
       'cancel_url' => $form['#cancel_url'],
       'capture' => $form['#capture'],
     ];
-
     $paypal_response = $payment_gateway_plugin->setExpressCheckout($payment, $extra);
 
-    if (!empty($paypal_response['TOKEN'])) {
-      $order = $payment->getOrder();
-      $order->setData('paypal_express_checkout', [
-        'flow' => 'ec',
-        'token' => $paypal_response['TOKEN'],
-        'payerid' => FALSE,
-        'capture' => $extra['capture'],
-      ]);
-      $order->save();
-    }
-    else {
-      // If we didn't get a TOKEN from PayPal, then the $paypal_response['ACK'] == 'Failure' and we should exit the checkout process
-      throw new PaymentGatewayException('Payment request to PayPal failed. Response: ' . $paypal_response['L_SHORTMESSAGE0']);
+    // If we didn't get a TOKEN back from PayPal, then the
+    // $paypal_response['ACK'] == 'Failure', we need to exit checkout.
+    if (empty($paypal_response['TOKEN'])) {
+      throw new PaymentGatewayException(sprintf('[PayPal error #%s]: %s', $paypal_response['L_ERRORCODE0'], $paypal_response['L_LONGMESSAGE0']));
     }
 
-    $redirect_url = $payment_gateway_plugin->getRedirectUrl();
+    $order = $payment->getOrder();
+    $order->setData('paypal_express_checkout', [
+      'flow' => 'ec',
+      'token' => $paypal_response['TOKEN'],
+      'payerid' => FALSE,
+      'capture' => $extra['capture'],
+    ]);
+    $order->save();
     $data = [
       'token' => $paypal_response['TOKEN'],
       'return' => $form['#return_url'],
@@ -50,7 +47,7 @@ class ExpressCheckoutForm extends BasePaymentOffsiteForm {
       'total' => $payment->getAmount()->getNumber(),
     ];
 
-    return $this->buildRedirectForm($form, $form_state, $redirect_url, $data, 'get');
+    return $this->buildRedirectForm($form, $form_state, $payment_gateway_plugin->getRedirectUrl(), $data, 'get');
   }
 
 }
