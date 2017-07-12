@@ -12,6 +12,7 @@ use Drupal\commerce_payment\PaymentTypeManager;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OnsitePaymentGatewayBase;
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
+use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\State\StateInterface;
@@ -68,8 +69,9 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   /**
    * {@inheritdoc}
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, ClientInterface $client, StateInterface $state, RounderInterface $rounder) {
-    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager);
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, ClientInterface $client, StateInterface $state, RounderInterface $rounder, TimeInterface $time) {
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time);
+
     $this->httpClient = $client;
     $this->state = $state;
     $this->rounder = $rounder;
@@ -86,6 +88,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       $container->get('entity_type.manager'),
       $container->get('plugin.manager.commerce_payment_type'),
       $container->get('plugin.manager.commerce_payment_method_type'),
+      $container->get('datetime.time'),
       $container->get('http_client'),
       $container->get('state'),
       $container->get('commerce_price.rounder')
@@ -129,6 +132,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
    */
   public function submitConfigurationForm(array &$form, FormStateInterface $form_state) {
     parent::submitConfigurationForm($form, $form_state);
+
     if (!$form_state->getErrors()) {
       $values = $form_state->getValue($form['#parents']);
       $this->configuration['client_id'] = $values['client_id'];
@@ -138,20 +142,11 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
 
   /**
    * {@inheritdoc}
-   *
-   * @todo Needs kernel test
    */
   public function createPayment(PaymentInterface $payment, $capture = TRUE) {
-    if ($payment->getState()->value != 'new') {
-      throw new \InvalidArgumentException('The provided payment is in an invalid state.');
-    }
+    $this->assertPaymentState($payment, ['new']);
     $payment_method = $payment->getPaymentMethod();
-    if (empty($payment_method)) {
-      throw new \InvalidArgumentException('The provided payment has no payment method referenced.');
-    }
-    if (REQUEST_TIME >= $payment_method->getExpiresTime()) {
-      throw new HardDeclineException('The provided payment method has expired');
-    }
+    $this->assertPaymentMethod($payment_method);
     $owner = $payment_method->getOwner();
     $amount = $this->rounder->round($payment->getAmount());
 
@@ -199,18 +194,12 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
         throw new HardDeclineException('Could not charge the payment method.');
       }
 
-      $payment->state = $capture ? 'capture_completed' : 'authorization';
-      if ($this->getMode() == 'test') {
-        $payment->setTest(TRUE);
-      }
+      $next_state = $capture ? 'completed' : 'authorization';
+      $payment->setState($next_state);
       $payment->setRemoteId($data['id']);
       $payment->setRemoteState($data['state']);
-      $payment->setAuthorizedTime(REQUEST_TIME);
-      if ($capture) {
-        $payment->setCapturedTime(REQUEST_TIME);
-      }
-      else {
-        $payment->setAuthorizationExpiresTime(REQUEST_TIME + (86400 * 29));
+      if (!$capture) {
+        $payment->setExpiresTime($this->time->getRequestTime() + (86400 * 29));
       }
       $payment->save();
     }
@@ -223,10 +212,8 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
    * {@inheritdoc}
    */
   public function capturePayment(PaymentInterface $payment, Price $amount = NULL) {
-    if ($payment->getState()->value != 'authorization') {
-      throw new \InvalidArgumentException('Only payments in the "authorization" state can be captured.');
-    }
-    if ($payment->getAuthorizationExpiresTime() < REQUEST_TIME) {
+    $this->assertPaymentState($payment, ['authorization']);
+    if ($payment->isExpired()) {
       throw new \InvalidArgumentException('Authorizations are guaranteed for up to 29 days.');
     }
     try {
@@ -274,10 +261,9 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
         throw new \Exception($data['reason_code'], $data['reason_code']);
       }
 
-      // TODO: Support partial refunds?
-      $payment->state = 'capture_completed';
+      // TODO: Support partial captures?
+      $payment->setState('completed');
       $payment->setAmount($amount);
-      $payment->setCapturedTime(REQUEST_TIME);
       $payment->save();
     }
     catch (RequestException $e) {
@@ -289,9 +275,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
    * {@inheritdoc}
    */
   public function voidPayment(PaymentInterface $payment) {
-    if ($payment->getState()->value != 'authorization') {
-      throw new \InvalidArgumentException('Only payments in the "authorization" state can be voided.');
-    }
+    $this->assertPaymentState($payment, ['authorization']);
 
     // Get payment details first.
     $response = $this->getPaymentDetails($payment->getRemoteId());
@@ -329,7 +313,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
             // Check the returned state to ensure the authorization has been
             // voided.
             if ($data['state'] == 'voided') {
-              $payment->state = 'authorization_voided';
+              $payment->setState('authorization_voided');
               $payment->save();
             }
           }
@@ -348,19 +332,12 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
    * TODO: Find a way to store the capture ID.
    */
   public function refundPayment(PaymentInterface $payment, Price $amount = NULL) {
-    if (!in_array($payment->getState()->value, ['capture_completed', 'capture_partially_refunded'])) {
-      throw new \InvalidArgumentException('Only payments in the "capture_completed" and "capture_partially_refunded" states can be refunded.');
-    }
-    // TODO: check if more than 180 days.
+    $this->assertPaymentState($payment, ['completed', 'partially_refunded']);
+    // @todo check if more than 180 days.
     // If not specified, refund the entire amount.
     $amount = $amount ?: $payment->getAmount();
+    $this->assertRefundAmount($payment, $amount);
     $amount = $this->rounder->round($amount);
-    // Validate the requested amount.
-    $balance = $payment->getBalance();
-
-    if ($amount->greaterThan($balance)) {
-      throw new InvalidRequestException(sprintf("Can't refund more than %s.", $balance->__toString()));
-    }
 
     try {
       $response = $this->getPaymentDetails($payment->getRemoteId());
@@ -404,10 +381,10 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
 
       if (isset($data['state']) && $data['state'] == 'completed') {
         if ($new_refunded_amount->lessThan($payment->getAmount())) {
-          $payment->state = 'capture_partially_refunded';
+          $payment->setState('partially_refunded');
         }
         else {
-          $payment->state = 'capture_refunded';
+          $payment->setState('refunded');
         }
 
         $payment->setRefundedAmount($new_refunded_amount);

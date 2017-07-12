@@ -13,6 +13,7 @@ use Drupal\commerce_payment\PaymentTypeManager;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OnsitePaymentGatewayBase;
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
+use Drupal\Component\Datetime\TimeInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use GuzzleHttp\ClientInterface;
@@ -62,8 +63,9 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
   /**
    * {@inheritdoc}
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, ClientInterface $client, RounderInterface $rounder) {
-    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager);
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, ClientInterface $client, RounderInterface $rounder, TimeInterface $time) {
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time);
+
     $this->httpClient = $client;
     $this->rounder = $rounder;
   }
@@ -79,6 +81,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
       $container->get('entity_type.manager'),
       $container->get('plugin.manager.commerce_payment_type'),
       $container->get('plugin.manager.commerce_payment_method_type'),
+      $container->get('datetime.time'),
       $container->get('http_client'),
       $container->get('commerce_price.rounder')
     );
@@ -88,14 +91,12 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
    * {@inheritdoc}
    */
   public function defaultConfiguration() {
-    $config = [
+    return [
       'partner' => '',
       'vendor' => '',
       'user' => '',
       'password' => '',
-    ];
-
-    return $config + parent::defaultConfiguration();
+    ] + parent::defaultConfiguration();
   }
 
   /**
@@ -110,21 +111,18 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
       '#default_value' => $this->configuration['partner'],
       '#required' => TRUE,
     ];
-
     $form['vendor'] = [
       '#type' => 'textfield',
       '#title' => $this->t('Vendor'),
       '#default_value' => $this->configuration['vendor'],
       '#required' => TRUE,
     ];
-
     $form['user'] = [
       '#type' => 'textfield',
       '#title' => $this->t('User'),
       '#default_value' => $this->configuration['user'],
       '#required' => TRUE,
     ];
-
     $form['password'] = [
       '#type' => 'password',
       '#title' => $this->t('Password'),
@@ -141,13 +139,13 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
    */
   public function submitConfigurationForm(array &$form, FormStateInterface $form_state) {
     parent::submitConfigurationForm($form, $form_state);
+
     if (!$form_state->getErrors()) {
       $values = $form_state->getValue($form['#parents']);
 
       $this->configuration['partner'] = $values['partner'];
       $this->configuration['vendor'] = $values['vendor'];
       $this->configuration['user'] = $values['user'];
-
       if (!empty($values['password'])) {
         $this->configuration['password'] = $values['password'];
       }
@@ -296,29 +294,25 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
    *   The payment state to validate the payment for.
    */
   protected function validatePayment(PaymentInterface $payment, $payment_state = 'new') {
-    if ($payment->getState()->value != $payment_state) {
-      throw new InvalidArgumentException('The provided payment is in an invalid state.');
-    }
+    $this->assertPaymentState($payment, [$payment_state]);
 
     $payment_method = $payment->getPaymentMethod();
-
     if (empty($payment_method)) {
       throw new InvalidArgumentException('The provided payment has no payment method referenced.');
     }
 
     switch ($payment_state) {
       case 'new':
-        if (REQUEST_TIME >= $payment_method->getExpiresTime()) {
+        if ($payment_method->isExpired()) {
           throw new HardDeclineException('The provided payment method has expired.');
         }
 
         break;
 
       case 'authorization':
-        if ($payment->getAuthorizationExpiresTime() < REQUEST_TIME) {
+        if ($payment->isExpired()) {
           throw new \InvalidArgumentException('Authorizations are guaranteed for up to 29 days.');
         }
-
         if (empty($payment->getRemoteId())) {
           throw new \InvalidArgumentException('Could not retrieve the transaction ID.');
         }
@@ -341,25 +335,19 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         'verbosity' => 'HIGH',
         // 'orderid' => $payment->getOrderId(),
       ]);
-
       if ($data['result'] !== '0') {
         throw new HardDeclineException('Could not charge the payment method. Response: ' . $data['respmsg'], $data['result']);
       }
 
-      $payment->state = $capture ? 'capture_completed' : 'authorization';
-
-      if ($capture) {
-        $payment->setCapturedTime(REQUEST_TIME);
-      }
-      else {
-        $payment->setAuthorizationExpiresTime(REQUEST_TIME + (86400 * 29));
+      $next_state = $capture ? 'completed' : 'authorization';
+      $payment->setState($next_state);
+      if (!$capture) {
+        $payment->setExpiresTime($this->time->getRequestTime() + (86400 * 29));
       }
 
       $payment
-        ->setTest(($this->getMode() == 'test'))
         ->setRemoteId($data['pnref'])
         ->setRemoteState('3')
-        ->setAuthorizedTime(REQUEST_TIME)
         ->save();
     }
     catch (RequestException $e) {
@@ -372,7 +360,6 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
    */
   public function capturePayment(PaymentInterface $payment, Price $amount = NULL) {
     $this->validatePayment($payment, 'authorization');
-
     // If not specified, capture the entire amount.
     $amount = $amount ?: $payment->getAmount();
     $amount = $this->rounder->round($amount);
@@ -389,11 +376,9 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         throw new PaymentGatewayException('Count not capture payment. Message: ' . $data['respmsg'], $data['result']);
       }
 
-      $payment->state = 'capture_completed';
-      $payment
-        ->setAmount($amount)
-        ->setCapturedTime(REQUEST_TIME)
-        ->save();
+      $payment->setState('completed');
+      $payment->setAmount($amount);
+      $payment->save();
     }
     catch (RequestException $e) {
       throw new PaymentGatewayException('Count not capture payment. Message: ' . $e->getMessage(), $e->getCode(), $e);
@@ -423,7 +408,7 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         throw new PaymentGatewayException('Payment could not be voided. Message: ' . $data['respmsg'], $data['result']);
       }
 
-      $payment->state = 'authorization_voided';
+      $payment->setState('authorization_voided');
       $payment->save();
     }
     catch (RequestException $e) {
@@ -437,22 +422,14 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
    * TODO: Find a way to store the capture ID.
    */
   public function refundPayment(PaymentInterface $payment, Price $amount = NULL) {
-    if (!in_array($payment->getState()->value, ['capture_completed', 'capture_partially_refunded'])) {
-      throw new InvalidArgumentException('Only payments in the "capture_completed" and "capture_partially_refunded" states can be refunded.');
-    }
-
-    if ($payment->getCapturedTime() < strtotime('-180 days')) {
+    $this->assertPaymentState($payment, ['completed', 'partially_refunded']);
+    if ($payment->getCompletedTime() < strtotime('-180 days')) {
       throw new InvalidRequestException("Unable to refund a payment captured more than 180 days ago.");
     }
-
     // If not specified, refund the entire amount.
     $amount = $amount ?: $payment->getAmount();
     $amount = $this->rounder->round($amount);
-
-    if ($amount->greaterThan($payment->getBalance())) {
-      throw new InvalidRequestException(sprintf("Can't refund more than %s.", (string) $payment->getBalance()));
-    }
-
+    $this->assertRefundAmount($payment, $amount);
     if (empty($payment->getRemoteId())) {
       throw new InvalidRequestException('Could not determine the remote payment details.');
     }
@@ -464,18 +441,19 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
         'trxtype' => 'C',
         'origid' => $payment->getRemoteId(),
       ]);
-
       if ($data['result'] !== '0') {
         throw new PaymentGatewayException('Credit could not be completed. Message: ' . $data['respmsg'], $data['result']);
       }
 
-      $payment->state = ($new_refunded_amount->lessThan($payment->getAmount()))
-        ? 'capture_partially_refunded'
-        : 'capture_refunded';
+      if ($new_refunded_amount->lessThan($payment->getAmount())) {
+        $payment->setState('partially_refunded');
+      }
+      else {
+        $payment->setState('refunded');
+      }
 
-      $payment
-        ->setRefundedAmount($new_refunded_amount)
-        ->save();
+      $payment->setRefundedAmount($new_refunded_amount);
+      $payment->save();
     }
     catch (RequestException $e) {
       throw new InvalidRequestException("Could not refund the payment.", $e->getCode(), $e);

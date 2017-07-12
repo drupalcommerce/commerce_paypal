@@ -112,14 +112,14 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    *   The payment type manager.
    * @param \Drupal\commerce_payment\PaymentMethodTypeManager $payment_method_type_manager
    *   The payment method type manager.
+   * @param \Drupal\Component\Datetime\TimeInterface $time
+   *   The time.
    * @param \Drupal\Core\Logger\LoggerChannelFactoryInterface $logger_channel_factory
    *   The logger channel factory.
    * @param \GuzzleHttp\ClientInterface $client
    *   The client.
    * @param \Drupal\commerce_price\RounderInterface $rounder
    *   The price rounder.
-   * @param \Drupal\Component\Datetime\TimeInterface $time
-   *   The time.
    * @param \Drupal\commerce_paypal\IPNHandlerInterface $ip_handler
    *   The IPN handler.
    * @param \Drupal\Core\Extension\ModuleHandlerInterface $module_handler
@@ -127,12 +127,12 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    * @param \Symfony\Component\EventDispatcher\EventDispatcherInterface $event_dispatcher
    *   The event dispatcher.
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, LoggerChannelFactoryInterface $logger_channel_factory, ClientInterface $client, RounderInterface $rounder, TimeInterface $time, IPNHandlerInterface $ip_handler, ModuleHandlerInterface $module_handler, EventDispatcherInterface $event_dispatcher) {
-    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager);
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, LoggerChannelFactoryInterface $logger_channel_factory, ClientInterface $client, RounderInterface $rounder, IPNHandlerInterface $ip_handler, ModuleHandlerInterface $module_handler, EventDispatcherInterface $event_dispatcher) {
+    parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time);
+
     $this->logger = $logger_channel_factory->get('commerce_paypal');
     $this->httpClient = $client;
     $this->rounder = $rounder;
-    $this->time = $time;
     $this->ipnHandler = $ip_handler;
     $this->moduleHandler = $module_handler;
     $this->eventDispatcher = $event_dispatcher;
@@ -149,10 +149,10 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $container->get('entity_type.manager'),
       $container->get('plugin.manager.commerce_payment_type'),
       $container->get('plugin.manager.commerce_payment_method_type'),
+      $container->get('datetime.time'),
       $container->get('logger.factory'),
       $container->get('http_client'),
       $container->get('commerce_price.rounder'),
-      $container->get('datetime.time'),
       $container->get('commerce_paypal.ipn_handler'),
       $container->get('module_handler'),
       $container->get('event_dispatcher')
@@ -307,16 +307,13 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     }
 
     $payment_storage = $this->entityTypeManager->getStorage('commerce_payment');
-    $request_time = $this->time->getRequestTime();
     $payment = $payment_storage->create([
       'state' => 'authorization',
       'amount' => $order->getTotalPrice(),
       'payment_gateway' => $this->entityId,
       'order_id' => $order->id(),
-      'test' => $this->getMode() == 'test',
       'remote_id' => $paypal_response['PAYMENTINFO_0_TRANSACTIONID'],
       'remote_state' => $paypal_response['PAYMENTINFO_0_PAYMENTSTATUS'],
-      'authorized' => $request_time,
     ]);
 
     // Process payment status received.
@@ -333,15 +330,15 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
 
       case 'Completed':
       case 'Processed':
-        $payment->state = 'capture_completed';
+        $payment->state = 'completed';
         break;
 
       case 'Refunded':
-        $payment->state = 'capture_refunded';
+        $payment->state = 'refunded';
         break;
 
       case 'Partially-Refunded':
-        $payment->state = 'capture_partially_refunded';
+        $payment->state = 'partially_refunded';
         break;
 
       case 'Expired':
@@ -356,9 +353,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    * {@inheritdoc}
    */
   public function capturePayment(PaymentInterface $payment, Price $amount = NULL) {
-    if ($payment->getState()->value != 'authorization') {
-      throw new \InvalidArgumentException('Only payments in the "authorization" state can be captured.');
-    }
+    $this->assertPaymentState($payment, ['authorization']);
     // If not specified, capture the entire amount.
     $amount = $amount ?: $payment->getAmount();
     $amount = $this->rounder->round($amount);
@@ -372,10 +367,8 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       throw new PaymentGatewayException($message, $paypal_response['L_ERRORCODE0']);
     }
 
-    $payment->state = 'capture_completed';
+    $payment->setState('completed');
     $payment->setAmount($amount);
-    $request_time = \Drupal::service('commerce.time')->getRequestTime();
-    $payment->setCapturedTime($request_time);
     // Update the remote id for the captured transaction.
     $payment->setRemoteId($paypal_response['TRANSACTIONID']);
     $payment->save();
@@ -385,20 +378,17 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    * {@inheritdoc}
    */
   public function voidPayment(PaymentInterface $payment) {
-    if ($payment->getState()->value != 'authorization') {
-      throw new \InvalidArgumentException('Only payments in the "authorization" state can be voided.');
-    }
+    $this->assertPaymentState($payment, ['authorization']);
 
     // GetExpressCheckoutDetails API Operation (NVP).
     // Shows information about an Express Checkout transaction.
     $paypal_response = $this->doVoid($payment);
-
     if ($paypal_response['ACK'] == 'Failure') {
       $message = $paypal_response['L_LONGMESSAGE0'];
       throw new PaymentGatewayException($message, $paypal_response['L_ERRORCODE0']);
     }
 
-    $payment->state = 'authorization_voided';
+    $payment->setState('authorization_voided');
     $payment->save();
   }
 
@@ -406,29 +396,22 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
    * {@inheritdoc}
    */
   public function refundPayment(PaymentInterface $payment, Price $amount = NULL) {
-    if (!in_array($payment->getState()->value, ['capture_completed', 'capture_partially_refunded'])) {
-      throw new \InvalidArgumentException('Only payments in the "capture_completed" and "capture_partially_refunded" states can be refunded.');
-    }
+    $this->assertPaymentState($payment, ['completed', 'partially_refunded']);
     // If not specified, refund the entire amount.
     $amount = $amount ?: $payment->getAmount();
+    $this->assertRefundAmount($payment, $amount);
     $amount = $this->rounder->round($amount);
-    // Validate the requested amount.
-    $balance = $payment->getBalance();
-    if ($amount->greaterThan($balance)) {
-      throw new InvalidRequestException(sprintf('Can\'t refund more than %s.', (string) $balance));
-    }
 
     $extra['amount'] = $amount->getNumber();
-
     // Check if the Refund is partial or full.
     $old_refunded_amount = $payment->getRefundedAmount();
     $new_refunded_amount = $old_refunded_amount->add($amount);
     if ($new_refunded_amount->lessThan($payment->getAmount())) {
-      $payment->state = 'capture_partially_refunded';
+      $payment->setState('partially_refunded');
       $extra['refund_type'] = 'Partial';
     }
     else {
-      $payment->state = 'capture_refunded';
+      $payment->setState('refunded');
       if ($amount->lessThan($payment->getAmount())) {
         $extra['refund_type'] = 'Partial';
       }
@@ -491,8 +474,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
           break;
 
         case 'Completed':
-          $payment->state = 'capture_completed';
-          $payment->setCapturedTime($this->time->getRequestTime());
+          $payment->state = 'completed';
           break;
       }
       // Update the remote id.
@@ -505,7 +487,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
         $this->logger->warning('IPN for Order @order_number ignored: the transaction to be refunded does not exist.', ['@order_number' => $ipn_data['invoice']]);
         return FALSE;
       }
-      elseif ($payment->getState() == 'capture_refunded') {
+      elseif ($payment->getState() == 'refunded') {
         $this->logger->warning('IPN for Order @order_number ignored: the transaction is already refunded.', ['@order_number' => $ipn_data['invoice']]);
         return FALSE;
       }
@@ -514,10 +496,10 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       $old_refunded_amount = $payment->getRefundedAmount();
       $new_refunded_amount = $old_refunded_amount->add($amount);
       if ($new_refunded_amount->lessThan($payment->getAmount())) {
-        $payment->state = 'capture_partially_refunded';
+        $payment->setState('partially_refunded');
       }
       else {
-        $payment->state = 'capture_refunded';
+        $payment->setState('refunded');
       }
       $payment->setRefundedAmount($new_refunded_amount);
     }
@@ -533,7 +515,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     if (isset($payment)) {
       $payment->currency_code = $ipn_data['mc_currency'];
       // Set the transaction's statuses based on the IPN's payment_status.
-      $payment->remote_state = $ipn_data['payment_status'];
+      $payment->setRemoteState($ipn_data['payment_status']);
       // Save the transaction information.
       $payment->save();
     }

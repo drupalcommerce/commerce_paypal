@@ -4,4 +4,4 @@ description: 'Provides Commerce integration for PayPal Payments.'
 package: Commerce (contrib)
 core: 8.x
 dependencies:
-  - commerce_payment
+  - commerce:commerce_payment
