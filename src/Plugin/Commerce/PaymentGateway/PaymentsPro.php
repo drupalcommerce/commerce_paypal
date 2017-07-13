@@ -441,7 +441,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   /**
    * {@inheritdoc}
    */
-  public function doRequest($endpoint, array $parameters = []) {
+  public function doRequest($endpoint, array $parameters = [], $method = 'POST') {
     try {
       $parameters += [
         'headers' => [
@@ -450,7 +450,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
         ],
         'timeout' => 30,
       ];
-      $response = $this->httpClient->post($this->getApiUrl() . $endpoint, $parameters);
+      $response = $this->httpClient->request($method, $this->getApiUrl() . $endpoint, $parameters);
       return json_decode($response->getBody(), TRUE);
     }
     catch (RequestException $e) {
@@ -463,19 +463,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
    * {@inheritdoc}
    */
   public function getPaymentDetails($payment_id) {
-    try {
-      $response = $this->httpClient->get($this->getApiUrl() . '/payments/payment/' . $payment_id, [
-        'headers' => [
-          'Content-type' => 'application/json',
-          'Authorization' => 'Bearer ' . $this->getAccessToken(),
-        ],
-      ]);
-      return json_decode($response->getBody(), TRUE);
-    }
-    catch (RequestException $e) {
-      \Drupal::logger('commerce_paypal')->error($e->getMessage());
-      return [];
-    }
+    return $this->doRequest($this->getApiUrl() . '/payments/payment/' . $payment_id, [], 'GET');
   }
 
 }

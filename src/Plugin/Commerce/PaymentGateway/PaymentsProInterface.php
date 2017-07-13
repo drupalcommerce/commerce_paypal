@@ -39,13 +39,15 @@ interface PaymentsProInterface extends OnsitePaymentGatewayInterface, SupportsAu
    *   The API endpoint (e.g /payments/payment).
    * @param array $parameters.
    *   The array of parameters to send.
+   * @param string $method
+   *   The HTTP method, defaults to POST.
    *
    * @return array
    *   PayPal response data.
    *
    * @see https://developer.paypal.com/docs/api.
    */
-  public function doRequest($endpoint, array $parameters = []);
+  public function doRequest($endpoint, array $parameters = [], $method = 'POST');
 
   /**
    * Gets an access token from PayPal.
