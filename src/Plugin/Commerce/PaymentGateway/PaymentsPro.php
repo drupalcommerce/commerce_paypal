@@ -446,10 +446,17 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       $parameters += [
         'headers' => [
           'Content-type' => 'application/json',
-          'Authorization' => 'Bearer ' . $this->getAccessToken(),
         ],
         'timeout' => 30,
       ];
+      // Add the Authorization header only if the auth header is not present,
+      // otherwise calling doRequest() from getAccessToken() will result in
+      // an infinite loop.
+      if (!isset($parameters['auth'])) {
+        $parameters['headers'] += [
+          'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ];
+      }
       $response = $this->httpClient->request($method, $this->getApiUrl() . $endpoint, $parameters);
       return json_decode($response->getBody(), TRUE);
     }
