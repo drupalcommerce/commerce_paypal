@@ -11,4 +11,48 @@ use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\SupportsRefundsInterf
  */
 interface PaymentsProInterface extends OnsitePaymentGatewayInterface, SupportsAuthorizationsInterface, SupportsRefundsInterface {
 
+  /**
+   * Gets the API URL.
+   *
+   * @return string
+   *   The API URL.
+   */
+  public function getApiUrl();
+
+  /**
+   * Shows details for a payment, by ID, that is yet completed.
+   *
+   * For example, a payment that was created, approved, or failed.
+   *
+   * @param string $payment_id
+   *   The payment identifier.
+   *
+   * @return array
+   *   PayPal response data.
+   */
+  public function getPaymentDetails($payment_id);
+
+  /**
+   * Performs a request to PayPal to the specified endpoint.
+   *
+   * @param string $endpoint
+   *   The API endpoint (e.g /payments/payment).
+   * @param array $parameters.
+   *   The array of parameters to send.
+   *
+   * @return array
+   *   PayPal response data.
+   *
+   * @see https://developer.paypal.com/docs/api.
+   */
+  public function doRequest($endpoint, array $parameters = []);
+
+  /**
+   * Gets an access token from PayPal.
+   *
+   * @return string
+   *   The access token returned by PayPal.
+   */
+  public function getAccessToken();
+
 }

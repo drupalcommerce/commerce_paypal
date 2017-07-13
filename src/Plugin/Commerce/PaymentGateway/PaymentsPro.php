@@ -5,8 +5,7 @@ namespace Drupal\commerce_paypal\Plugin\Commerce\PaymentGateway;
 use Drupal\commerce_payment\CreditCard;
 use Drupal\commerce_payment\Entity\PaymentInterface;
 use Drupal\commerce_payment\Entity\PaymentMethodInterface;
-use Drupal\commerce_payment\Exception\HardDeclineException;
-use Drupal\commerce_payment\Exception\InvalidRequestException;
+use Drupal\commerce_payment\Exception\PaymentGatewayException;
 use Drupal\commerce_payment\PaymentMethodTypeManager;
 use Drupal\commerce_payment\PaymentTypeManager;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OnsitePaymentGatewayBase;
@@ -34,16 +33,6 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
  * )
  */
 class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterface {
-
-  /**
-   * Paypal test API URL.
-   */
-  const PAYPAL_API_TEST_URL = 'https://api.sandbox.paypal.com/v1';
-
-  /**
-   * Paypal production API URL.
-   */
-  const PAYPAL_API_URL = 'https://api.paypal.com/v1';
 
   /**
    * The HTTP client.
@@ -177,35 +166,20 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
     if ($owner->isAuthenticated()) {
       $parameters['payer']['funding_instruments'][0]['credit_card_token']['payer_id'] = $owner->id();
     }
+    $data = $this->doRequest('/payments/payment', ['json' => $parameters]);
 
-    try {
-      $response = $this->httpClient->post($this->apiUrl() . '/payments/payment', [
-        'headers' => [
-          'Content-type' => 'application/json',
-          'Authorization' => 'Bearer ' . $this->getAccessToken(),
-        ],
-        'json' => $parameters,
-        'timeout' => 0,
-      ]);
-      $data = json_decode($response->getBody(), TRUE);
-
-      // TODO: not sure if we need to throw a HardDeclineException here.
-      if ($data['state'] == 'failed') {
-        throw new HardDeclineException('Could not charge the payment method.');
-      }
-
-      $next_state = $capture ? 'completed' : 'authorization';
-      $payment->setState($next_state);
-      $payment->setRemoteId($data['id']);
-      $payment->setRemoteState($data['state']);
-      if (!$capture) {
-        $payment->setExpiresTime($this->time->getRequestTime() + (86400 * 29));
-      }
-      $payment->save();
+    if (!isset($data['state']) || $data['state'] == 'failed') {
+      throw new PaymentGatewayException('Could not charge the payment method.');
     }
-    catch (RequestException $e) {
-      throw new HardDeclineException('Could not charge the payment method.');
+
+    $next_state = $capture ? 'completed' : 'authorization';
+    $payment->setState($next_state);
+    $payment->setRemoteId($data['id']);
+    $payment->setRemoteState($data['state']);
+    if (!$capture) {
+      $payment->setExpiresTime($this->time->getRequestTime() + (86400 * 29));
     }
+    $payment->save();
   }
 
   /**
@@ -216,59 +190,41 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
     if ($payment->isExpired()) {
       throw new \InvalidArgumentException('Authorizations are guaranteed for up to 29 days.');
     }
-    try {
-      // Retrieve the remote payment details, instead of doing this, we should
-      // store the initial response containing authorization ID.
-      $response = $this->getPaymentDetails($payment->getRemoteId());
+    // Retrieve the remote payment details, instead of doing this, we should
+    // store the initial response containing authorization ID.
+    $data = $this->getPaymentDetails($payment->getRemoteId());
 
-      if ($response->getStatusCode() !== 200) {
-        throw new \InvalidArgumentException('Could not retrieve the remote payment details.');
-      }
+    // Retrieve the authorization ID.
+    $relatedResources = $data['transactions'][0]['related_resources'];
+    $authorization = $relatedResources[0]['authorization'];
 
-      // Retrieve the authorization ID.
-      $data = json_decode($response->getBody(), TRUE);
-      $relatedResources = $data['transactions'][0]['related_resources'];
-      $authorization = $relatedResources[0]['authorization'];
-
-      if (!isset($authorization['id'])) {
-        throw new \InvalidArgumentException('Could not retrieve the transaction ID.');
-      }
-
-      // If not specified, capture the entire amount.
-      $amount = $amount ?: $payment->getAmount();
-      $amount = $this->rounder->round($amount);
-
-      // Instead of the remoteId, we need to pass the authorization ID, figure
-      // out how to store it...
-      $endpoint = $this->apiUrl() . '/payments/authorization/' . $authorization['id'] . '/capture';
-
-      $response = $this->httpClient->post($endpoint, [
-        'headers' => [
-          'Content-type' => 'application/json',
-          'Authorization' => 'Bearer ' . $this->getAccessToken(),
-        ],
-        'json' => [
-          'amount' => [
-            'currency' => $amount->getCurrencyCode(),
-            'total' => $amount->getNumber(),
-          ],
-        ],
-      ]);
-      $data = json_decode($response->getBody(), TRUE);
-
-      // TODO: Investigate which Exception is expected.
-      if ($data['state'] != 'completed') {
-        throw new \Exception($data['reason_code'], $data['reason_code']);
-      }
-
-      // TODO: Support partial captures?
-      $payment->setState('completed');
-      $payment->setAmount($amount);
-      $payment->save();
+    if (!isset($authorization['id'])) {
+      throw new PaymentGatewayException('Could not retrieve the authorization ID.');
     }
-    catch (RequestException $e) {
-      throw new \Exception($e->getMessage());
+
+    // If not specified, capture the entire amount.
+    $amount = $amount ?: $payment->getAmount();
+    $amount = $this->rounder->round($amount);
+
+    // Instead of the remoteId, we need to pass the authorization ID, figure
+    // out how to store it...
+    $data = $this->doRequest('/payments/authorization/' . $authorization['id'] . '/capture', [
+      'json' => [
+        'amount' => [
+          'currency' => $amount->getCurrencyCode(),
+          'total' => $amount->getNumber(),
+        ],
+      ],
+    ]);
+
+    if ($data['state'] !== 'completed') {
+      throw new PaymentGatewayException(sprintf('Reason: %s', $data['reason_code']));
     }
+
+    // TODO: Support partial captures?.
+    $payment->setState('completed');
+    $payment->setAmount($amount);
+    $payment->save();
   }
 
   /**
@@ -278,59 +234,34 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
     $this->assertPaymentState($payment, ['authorization']);
 
     // Get payment details first.
-    $response = $this->getPaymentDetails($payment->getRemoteId());
+    $data = $this->getPaymentDetails($payment->getRemoteId());
 
-    if ($response->getStatusCode() === 200) {
-      $data = json_decode($response->getBody(), TRUE);
+    if (!isset($data['intent']) || $data['intent'] != 'authorize') {
+      throw new PaymentGatewayException('Only payments in the "authorization" state can be voided.');
+    }
+    $transaction = $data['transactions'][0];
+    $authorization = FALSE;
 
-      if (!isset($data['intent']) || $data['intent'] != 'authorize') {
-        throw new \InvalidArgumentException('Only payments in the "authorization" state can be voided.');
-      }
-
-      $transaction = $data['transactions'][0];
-      $authorization = FALSE;
-
-      foreach ($transaction['related_resources'] as $related_resource) {
-        if (key($related_resource) == 'authorization') {
-          $authorization = $related_resource['authorization'];
-          break;
-        }
-      }
-
-      // If we were able to find the authorization in the related resource array.
-      if (isset($authorization['id'])) {
-        try {
-          $response = $this->httpClient->post($this->apiUrl() . '/payments/authorization/' . $authorization['id'] . '/void', [
-            'headers' => [
-              'Content-type' => 'application/json',
-              'Authorization' => 'Bearer ' . $this->getAccessToken(),
-            ],
-          ]);
-
-          if ($response->getStatusCode() === 200) {
-            $data = json_decode($response->getBody(), TRUE);
-
-            // Check the returned state to ensure the authorization has been
-            // voided.
-            if ($data['state'] == 'voided') {
-              $payment->setState('authorization_voided');
-              $payment->save();
-            }
-          }
-        }
-        catch (RequestException $e) {
-          throw new \InvalidArgumentException('Only payments in the "authorization" state can be voided.');
-        }
+    foreach ($transaction['related_resources'] as $related_resource) {
+      if (key($related_resource) == 'authorization') {
+        $authorization = $related_resource['authorization'];
+        break;
       }
     }
+    $data = $this->doRequest('/payments/authorization/' . $authorization['id'] . '/void');
 
+    // Check the returned state to ensure the authorization has been
+    // voided.
+    if (!isset($data['state']) || $data['state'] !== 'voided') {
+      throw new PaymentGatewayException('Could not void the payment');
+    }
+    $payment->setState('authorization_voided');
+    $payment->save();
   }
 
   /**
    * {@inheritdoc}
-   *
-   * TODO: Find a way to store the capture ID.
-   */
+   **/
   public function refundPayment(PaymentInterface $payment, Price $amount = NULL) {
     $this->assertPaymentState($payment, ['completed', 'partially_refunded']);
     // @todo check if more than 180 days.
@@ -338,202 +269,111 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
     $amount = $amount ?: $payment->getAmount();
     $this->assertRefundAmount($payment, $amount);
     $amount = $this->rounder->round($amount);
+    $data = $this->getPaymentDetails($payment->getRemoteId());
 
-    try {
-      $response = $this->getPaymentDetails($payment->getRemoteId());
-      $data = json_decode($response->getBody(), TRUE);
+    // We need to retrieve the payment transaction ID.
+    if (!isset($data['id'])) {
+      throw new PaymentGatewayException('Could not retrieve the remote payment details.');
+    }
 
-      // We need to retrieve the payment transaction ID.
-      if (!isset($data['id'])) {
-        throw new InvalidRequestException('Could not retrieve the remote payment details.');
-      }
-
-      // If it was a sale payment transaction.
-      if ($data['intent'] == 'sale') {
-        $transaction = $data['transactions'][0]['related_resources'][0]['sale'];
-        $endpoint = '/payments/sale/' . $transaction['id'] . '/refund';
-      }
-      else {
-        foreach ($data['transactions'][0]['related_resources'] as $key => $related_resource) {
-          if (key($related_resource) == 'capture') {
-            $endpoint = '/payments/capture/' . $related_resource['capture']['id'] . '/refund/';
-            break;
-          }
+    // If it was a sale payment transaction.
+    if ($data['intent'] == 'sale') {
+      $transaction = $data['transactions'][0]['related_resources'][0]['sale'];
+      $endpoint = '/payments/sale/' . $transaction['id'] . '/refund';
+    }
+    else {
+      foreach ($data['transactions'][0]['related_resources'] as $key => $related_resource) {
+        if (key($related_resource) == 'capture') {
+          $endpoint = '/payments/capture/' . $related_resource['capture']['id'] . '/refund/';
+          break;
         }
-      }
-
-      $old_refunded_amount = $payment->getRefundedAmount();
-      $new_refunded_amount = $old_refunded_amount->add($amount);
-
-      $response = $this->httpClient->post($this->apiUrl() . $endpoint, [
-        'headers' => [
-          'Content-type' => 'application/json',
-          'Authorization' => 'Bearer ' . $this->getAccessToken(),
-        ],
-        'json' => [
-          'amount' => [
-            'total' => $amount->getNumber(),
-            'currency' => $amount->getCurrencyCode(),
-          ],
-        ],
-      ]);
-      $data = json_decode($response->getBody(), TRUE);
-
-      if (isset($data['state']) && $data['state'] == 'completed') {
-        if ($new_refunded_amount->lessThan($payment->getAmount())) {
-          $payment->setState('partially_refunded');
-        }
-        else {
-          $payment->setState('refunded');
-        }
-
-        $payment->setRefundedAmount($new_refunded_amount);
-        $payment->save();
       }
     }
-    catch (RequestException $e) {
-      throw new InvalidRequestException("Could not refund the payment.");
+
+    if (!isset($endpoint)) {
+      throw new PaymentGatewayException('Could not determine the endpoint for refunding payment.');
     }
+
+    $old_refunded_amount = $payment->getRefundedAmount();
+    $new_refunded_amount = $old_refunded_amount->add($amount);
+
+    $data = $this->doRequest($endpoint, [
+      'json' => [
+        'amount' => [
+          'total' => $amount->getNumber(),
+          'currency' => $amount->getCurrencyCode(),
+        ],
+      ],
+    ]);
+
+    if (!isset($data['state']) || $data['state'] !== 'completed') {
+      throw new PaymentGatewayException('Could not refund the payment.');
+    }
+    if ($new_refunded_amount->lessThan($payment->getAmount())) {
+      $payment->setState('partially_refunded');
+    }
+    else {
+      $payment->setState('refunded');
+    }
+    $payment->setRefundedAmount($new_refunded_amount);
+    $payment->save();
   }
 
   /**
    * {@inheritdoc}
    */
   public function createPaymentMethod(PaymentMethodInterface $payment_method, array $payment_details) {
-    try {
-      $address = $payment_method->getBillingProfile()->address->first();
-      $owner = $payment_method->getOwner();
+    $address = $payment_method->getBillingProfile()->address->first();
+    $owner = $payment_method->getOwner();
 
-      // Prepare an array of parameters to sent to the vault endpoint.
-      $parameters = [
-        'number' => $payment_details['number'],
-        'type' => $payment_details['type'],
-        'expire_month' => $payment_details['expiration']['month'],
-        'expire_year' => $payment_details['expiration']['year'],
-        'cvv2' => $payment_details['security_code'],
-        'first_name' => $address->getGivenName(),
-        'last_name' => $address->getFamilyName(),
-        'billing_address' => [
-          'line1' => $address->getAddressLine1(),
-          'city' => $address->getLocality(),
-          'country_code' => $address->getCountryCode(),
-          'postal_code' => $address->getPostalCode(),
-          'state' => $address->getAdministrativeArea(),
-        ],
-      ];
+    // Prepare an array of parameters to sent to the vault endpoint.
+    $parameters = [
+      'number' => $payment_details['number'],
+      'type' => $payment_details['type'],
+      'expire_month' => $payment_details['expiration']['month'],
+      'expire_year' => $payment_details['expiration']['year'],
+      'cvv2' => $payment_details['security_code'],
+      'first_name' => $address->getGivenName(),
+      'last_name' => $address->getFamilyName(),
+      'billing_address' => [
+        'line1' => $address->getAddressLine1(),
+        'city' => $address->getLocality(),
+        'country_code' => $address->getCountryCode(),
+        'postal_code' => $address->getPostalCode(),
+        'state' => $address->getAdministrativeArea(),
+      ],
+    ];
 
-      // Should we send the UUID instead?
-      // payer_id is marked as deprecated on some doc pages.
-      if ($owner->isAuthenticated()) {
-        $parameters['payer_id'] = $owner->id();
-      }
-
-      // TODO: Include the merchant_id parameter.
-      $response = $this->httpClient->post($this->apiUrl() . '/vault/credit-cards', [
-        'headers' => [
-          'Content-type' => 'application/json',
-          'Authorization' => 'Bearer ' . $this->getAccessToken(),
-        ],
-        'json' => $parameters,
-      ]);
-
-      // Check the response code, checking 201 should be enough.
-      if (in_array($response->getStatusCode(), [200, 201])) {
-        $data = json_decode($response->getBody(), TRUE);
-
-        $payment_method->card_type = $payment_details['type'];
-        // Only the last 4 numbers are safe to store.
-        $payment_method->card_number = substr($payment_details['number'], -4);
-        $payment_method->card_exp_month = $payment_details['expiration']['month'];
-        $payment_method->card_exp_year = $payment_details['expiration']['year'];
-        $expires = CreditCard::calculateExpirationTimestamp($payment_details['expiration']['month'], $payment_details['expiration']['year']);
-
-        // Store the remote ID returned by the request.
-        $payment_method->setRemoteId($data['id']);
-        $payment_method->setExpiresTime($expires);
-        $payment_method->save();
-      }
-      else {
-        throw new HardDeclineException("Unable to store the credit card");
-      }
+    // Should we send the UUID instead?
+    // payer_id is marked as deprecated on some doc pages.
+    if ($owner->isAuthenticated()) {
+      $parameters['payer_id'] = $owner->id();
     }
-    catch (RequestException $e) {
-      throw new HardDeclineException("Unable to store the credit card");
+    $data = $this->doRequest('/vault/credit-cards', ['json' => $parameters]);
+
+    if (!isset($data['id']) || $data['state'] !== 'ok') {
+      throw new PaymentGatewayException('Unable to store the credit card');
     }
+
+    $payment_method->card_type = $payment_details['type'];
+    // Only the last 4 numbers are safe to store.
+    $payment_method->card_number = substr($payment_details['number'], -4);
+    $payment_method->card_exp_month = $payment_details['expiration']['month'];
+    $payment_method->card_exp_year = $payment_details['expiration']['year'];
+    $expires = CreditCard::calculateExpirationTimestamp($payment_details['expiration']['month'], $payment_details['expiration']['year']);
+
+    // Store the remote ID returned by the request.
+    $payment_method->setRemoteId($data['id']);
+    $payment_method->setExpiresTime($expires);
+    $payment_method->save();
   }
 
   /**
    * {@inheritdoc}
    */
   public function deletePaymentMethod(PaymentMethodInterface $payment_method) {
-    $payment_method->delete();
-  }
-
-  /**
-   * Gets an access token from PayPal.
-   *
-   * @return string
-   *   The access token returned by PayPal.
-   */
-  protected function getAccessToken() {
-    $access_token = $this->state->get('commerce_paypal.access_token');
-
-    if (!empty($access_token)) {
-      $token_expiration = $this->state->get('commerce_paypal.access_token_expiration');
-
-      // Check if the access token is still valid.
-      if (!empty($token_expiration) && $token_expiration > REQUEST_TIME) {
-        return $access_token;
-      }
-    }
-
     try {
-      $response = $this->httpClient->post($this->apiUrl() . '/oauth2/token', [
-        'headers' => [
-          'Content-Type' => 'application/x-www-form-urlencoded',
-        ],
-        'auth' => [
-          $this->configuration['client_id'],
-          $this->configuration['client_secret'],
-        ],
-        'form_params' => [
-          'grant_type' => 'client_credentials',
-        ],
-      ]);
-      $data = json_decode($response->getBody(), TRUE);
-
-      // Store the access token.
-      if ($response->getStatusCode() === 200 && isset($data['access_token'])) {
-        $this->state->set('commerce_paypal.access_token', $data['access_token']);
-        $this->state->set('commerce_paypal.access_token_expiration', REQUEST_TIME + $data['expires_in']);
-        return $data['access_token'];
-      }
-    }
-    catch (RequestException $e) {
-    }
-  }
-
-  /**
-   * Returns the Api URL.
-   */
-  protected function apiUrl() {
-    return $this->getMode() == 'test' ? self::PAYPAL_API_TEST_URL : self::PAYPAL_API_URL;
-  }
-
-  /**
-   * Shows details for a payment, by ID, that is yet completed.
-   *
-   * For example, a payment that was created, approved, or failed.
-   *
-   * @param string $payment_id
-   *   The payment identifier.
-   *
-   * @return \Psr\Http\Message\ResponseInterface|bool
-   *   The HTTP response, or FALSE in case of failure.
-   */
-  protected function getPaymentDetails($payment_id) {
-    try {
-      return $this->httpClient->get($this->apiUrl() . '/payments/payment/' . $payment_id, [
+      $response = $this->httpClient->delete($this->getApiUrl() . '/vault/credit-cards/' . $payment_method->getRemoteId(), [
         'headers' => [
           'Content-type' => 'application/json',
           'Authorization' => 'Bearer ' . $this->getAccessToken(),
@@ -541,7 +381,100 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
       ]);
     }
     catch (RequestException $e) {
-      return FALSE;
+      \Drupal::logger('commerce_paypal')->error($e->getMessage());
+      throw new PaymentGatewayException('The payment method could not be deleted.');
+    }
+
+    if ($response->getStatusCode() !== 204) {
+      throw new PaymentGatewayException('The payment method could not be deleted.');
+    }
+
+    $payment_method->delete();
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getAccessToken() {
+    $access_token = $this->state->get('commerce_paypal.access_token');
+
+    if (!empty($access_token)) {
+      $token_expiration = $this->state->get('commerce_paypal.access_token_expiration');
+
+      // Check if the access token is still valid.
+      if (!empty($token_expiration) && $token_expiration > $this->time->getRequestTime()) {
+        return $access_token;
+      }
+    }
+    $data = $this->doRequest('/oauth2/token', [
+      'headers' => [
+        'Content-Type' => 'application/x-www-form-urlencoded',
+      ],
+      'auth' => [
+        $this->configuration['client_id'],
+        $this->configuration['client_secret'],
+      ],
+      'form_params' => [
+        'grant_type' => 'client_credentials',
+      ],
+    ]);
+    // Store the access token.
+    if (isset($data['access_token'])) {
+      $this->state->set('commerce_paypal.access_token', $data['access_token']);
+      $this->state->set('commerce_paypal.access_token_expiration', $this->time->getRequestTime() + $data['expires_in']);
+      return $data['access_token'];
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getApiUrl() {
+    if ($this->getMode() == 'test') {
+      return 'https://api.sandbox.paypal.com/v1';
+    }
+    else {
+      return 'https://api.paypal.com/v1';
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function doRequest($endpoint, array $parameters = []) {
+    try {
+      $parameters += [
+        'headers' => [
+          'Content-type' => 'application/json',
+          'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ],
+        'timeout' => 30,
+      ];
+      $response = $this->httpClient->post($this->getApiUrl() . $endpoint, $parameters);
+      return json_decode($response->getBody(), TRUE);
+    }
+    catch (RequestException $e) {
+      \Drupal::logger('commerce_paypal')->error($e->getMessage());
+      return [];
+    }
+  }
+
+  /**
+   * {@inheritdoc}
+   */
+  public function getPaymentDetails($payment_id) {
+    try {
+      $response = $this->httpClient->get($this->getApiUrl() . '/payments/payment/' . $payment_id, [
+        'headers' => [
+          'Content-type' => 'application/json',
+          'Authorization' => 'Bearer ' . $this->getAccessToken(),
+        ],
+      ]);
+      return json_decode($response->getBody(), TRUE);
+    }
+    catch (RequestException $e) {
+      \Drupal::logger('commerce_paypal')->error($e->getMessage());
+      return [];
     }
   }
 
