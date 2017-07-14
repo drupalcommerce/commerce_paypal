@@ -576,7 +576,7 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
       'PAYMENTREQUEST_0_PAYMENTACTION' => $payment_action,
       'PAYMENTREQUEST_0_AMT' => $amount->getNumber(),
       'PAYMENTREQUEST_0_CURRENCYCODE' => $amount->getCurrencyCode(),
-      'PAYMENTREQUEST_0_INVNUM' => $order->id(),
+      'PAYMENTREQUEST_0_INVNUM' => $order->uuid(),
 
       // Set the return and cancel URLs.
       'RETURNURL' => $extra['return_url'],
