@@ -11,6 +11,8 @@ use Drupal\commerce_payment\Exception\PaymentGatewayException;
 use Drupal\commerce_payment\PaymentMethodTypeManager;
 use Drupal\commerce_payment\PaymentTypeManager;
 use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OnsitePaymentGatewayBase;
+use Drupal\commerce_paypal\Event\PostCreatePayFlowPaymentMethodEvent;
+use Drupal\commerce_paypal\Event\PayPalEvents;
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
 use Drupal\Component\Datetime\TimeInterface;
@@ -20,6 +22,7 @@ use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\RequestException;
 use InvalidArgumentException;
 use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 
 /**
  * Provides the PayPal Payflow payment gateway.
@@ -61,13 +64,21 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
   protected $rounder;
 
   /**
+   * The event dispatcher.
+   *
+   * @var \Symfony\Component\EventDispatcher\EventDispatcherInterface
+   */
+  protected $eventDispatcher;
+
+  /**
    * {@inheritdoc}
    */
-  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, ClientInterface $client, RounderInterface $rounder) {
+  public function __construct(array $configuration, $plugin_id, $plugin_definition, EntityTypeManagerInterface $entity_type_manager, PaymentTypeManager $payment_type_manager, PaymentMethodTypeManager $payment_method_type_manager, TimeInterface $time, ClientInterface $client, RounderInterface $rounder, EventDispatcherInterface $event_dispatcher) {
     parent::__construct($configuration, $plugin_id, $plugin_definition, $entity_type_manager, $payment_type_manager, $payment_method_type_manager, $time);
 
     $this->httpClient = $client;
     $this->rounder = $rounder;
+    $this->eventDispatcher = $event_dispatcher;
   }
 
   /**
@@ -83,7 +94,8 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
       $container->get('plugin.manager.commerce_payment_method_type'),
       $container->get('datetime.time'),
       $container->get('http_client'),
-      $container->get('commerce_price.rounder')
+      $container->get('commerce_price.rounder'),
+      $container->get('event_dispatcher')
     );
   }
 
@@ -499,8 +511,13 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
       // Store the remote ID returned by the request.
       $payment_method
         ->setRemoteId($data['pnref'])
-        ->setExpiresTime($expires)
-        ->save();
+        ->setExpiresTime($expires);
+
+      // Allow the new payment method to be altered before being saved.
+      $event = new PostCreatePayFlowPaymentMethodEvent($payment_method, $payment_details);
+      $this->eventDispatcher->dispatch(PayPalEvents::POST_CREATE_PAYMENT_METHOD_PAYFLOW, $event);
+
+      $event->getPaymentMethod()->save();
     }
     catch (RequestException $e) {
       throw new HardDeclineException("Unable to store the credit card");
