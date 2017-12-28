@@ -188,16 +188,22 @@ class Payflow extends OnsitePaymentGatewayBase implements PayflowInterface {
   }
 
   /**
-   * Format the expiration date for Payflow from the provided payment details.
+   * Formats the expiration date from the provided payment details.
+   *
+   * PayPal requires the expiration date to be in MMYY format.
+   * Using a four-digit year (MMYYYY) will cause some banks to decline
+   * transactions because the expiration date is considered invalid.
+   * For example, 072018 will be interpreted as 0720 instead of 0718.
    *
    * @param array $payment_details
-   *   The payment details array.
+   *   The payment details.
    *
    * @return string
-   *   The expiration date string.
+   *   The expiration date, in the MMYY format.
    */
   protected function getExpirationDate(array $payment_details) {
-    return $payment_details['expiration']['month'] . $payment_details['expiration']['year'];
+    $date = \DateTime::createFromFormat('Y', $payment_details['expiration']['year']);
+    return $payment_details['expiration']['month']  . $date->format('y');
   }
 
   /**
