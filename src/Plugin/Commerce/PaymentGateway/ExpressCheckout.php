@@ -300,8 +300,20 @@ class ExpressCheckout extends OffsitePaymentGatewayBase implements ExpressChecko
     $paypal_response = $this->doExpressCheckoutDetails($order);
 
     // Nothing to do for failures for now - no payment saved.
-    if ($paypal_response['PAYMENTINFO_0_PAYMENTSTATUS'] == 'Failed') {
+    if (isset($paypal_response['PAYMENTINFO_0_PAYMENTSTATUS']) && $paypal_response['PAYMENTINFO_0_PAYMENTSTATUS'] == 'Failed') {
       throw new PaymentGatewayException($paypal_response['PAYMENTINFO_0_LONGMESSAGE'], $paypal_response['PAYMENTINFO_0_ERRORCODE']);
+    }
+
+    if ($paypal_response['ACK'] == 'Failure') {
+      // When a buyer's funding source fails, the DoExpressCheckoutPayment and
+      // DoAuthorization call, a 10486 error is returned.
+      // @link https://developer.paypal.com/docs/classic/express-checkout/ht_ec_fundingfailure10486/
+      if (isset($paypal_response['L_ERRORCODE0']) && $paypal_response['L_ERRORCODE0'] == "10486") {
+        $message = $paypal_response['L_LONGMESSAGE0'];
+        throw new PaymentGatewayException("$message Express Checkout payment failed due to a bad funding source; it is possible that the transaction exceeded the buyer's card limit.", $paypal_response['L_ERRORCODE0']);
+      }
+
+      throw new PaymentGatewayException($paypal_response['L_LONGMESSAGE0'], $paypal_response['L_ERRORCODE0']);
     }
 
     $payment_storage = $this->entityTypeManager->getStorage('commerce_payment');
