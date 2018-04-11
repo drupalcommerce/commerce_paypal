@@ -20,12 +20,15 @@ commerce_payment.commerce_payment_gateway.plugin.paypal_express_checkout:
 commerce_payment.commerce_payment_gateway.plugin.paypal_payments_pro:
   type: commerce_payment_gateway_configuration
   mapping:
-    client_id:
+    api_username:
       type: string
-      label: 'Client ID'
-    client_secret:
+      label: 'API Username'
+    api_password:
       type: string
-      label: 'Client secret'
+      label: 'API Password'
+    signature:
+      type: string
+      label: 'Signature'
 commerce_payment.commerce_payment_gateway.plugin.paypal_payflow:
   type: commerce_payment_gateway_configuration
   mapping:

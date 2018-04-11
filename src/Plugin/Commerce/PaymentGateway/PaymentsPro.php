@@ -12,6 +12,7 @@ use Drupal\commerce_payment\Plugin\Commerce\PaymentGateway\OnsitePaymentGatewayB
 use Drupal\commerce_price\Price;
 use Drupal\commerce_price\RounderInterface;
 use Drupal\Component\Datetime\TimeInterface;
+use Drupal\Component\Serialization\Json;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\State\StateInterface;
@@ -89,8 +90,9 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
    */
   public function defaultConfiguration() {
     return [
-      'client_id' => '',
-      'client_secret' => '',
+      'api_username' => '',
+      'api_password' => '',
+      'signature' => '',
     ] + parent::defaultConfiguration();
   }
 
@@ -100,16 +102,22 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   public function buildConfigurationForm(array $form, FormStateInterface $form_state) {
     $form = parent::buildConfigurationForm($form, $form_state);
 
-    $form['client_id'] = [
+    $form['api_username'] = [
       '#type' => 'textfield',
-      '#title' => $this->t('Client ID'),
-      '#default_value' => $this->configuration['client_id'],
+      '#title' => $this->t('API Username'),
+      '#default_value' => $this->configuration['api_username'],
       '#required' => TRUE,
     ];
-    $form['client_secret'] = [
+    $form['api_password'] = [
       '#type' => 'textfield',
-      '#title' => $this->t('Client secret'),
-      '#default_value' => $this->configuration['client_secret'],
+      '#title' => $this->t('API Password'),
+      '#default_value' => $this->configuration['api_password'],
+      '#required' => TRUE,
+    ];
+    $form['signature'] = [
+      '#type' => 'textfield',
+      '#title' => $this->t('Signature'),
+      '#default_value' => $this->configuration['signature'],
       '#required' => TRUE,
     ];
 
@@ -124,8 +132,9 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
 
     if (!$form_state->getErrors()) {
       $values = $form_state->getValue($form['#parents']);
-      $this->configuration['client_id'] = $values['client_id'];
-      $this->configuration['client_secret'] = $values['client_secret'];
+      $this->configuration['api_username'] = $values['api_username'];
+      $this->configuration['api_password'] = $values['api_password'];
+      $this->configuration['signature'] = $values['signature'];
     }
   }
 
@@ -261,7 +270,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
 
   /**
    * {@inheritdoc}
-   **/
+   */
   public function refundPayment(PaymentInterface $payment, Price $amount = NULL) {
     $this->assertPaymentState($payment, ['completed', 'partially_refunded']);
     // @todo check if more than 180 days.
@@ -323,6 +332,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
    * {@inheritdoc}
    */
   public function createPaymentMethod(PaymentMethodInterface $payment_method, array $payment_details) {
+    /** @var \Drupal\address\Plugin\Field\FieldType\AddressItem $address */
     $address = $payment_method->getBillingProfile()->address->first();
     $owner = $payment_method->getOwner();
 
@@ -393,9 +403,12 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   }
 
   /**
-   * {@inheritdoc}
+   * Gets an access token from PayPal.
+   *
+   * @return string
+   *   The access token returned by PayPal.
    */
-  public function getAccessToken() {
+  protected function getAccessToken() {
     $access_token = $this->state->get('commerce_paypal.access_token');
 
     if (!empty($access_token)) {
@@ -429,7 +442,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   /**
    * {@inheritdoc}
    */
-  public function getApiUrl() {
+  protected function getApiUrl() {
     if ($this->getMode() == 'test') {
       return 'https://api.sandbox.paypal.com/v1';
     }
@@ -439,9 +452,21 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   }
 
   /**
-   * {@inheritdoc}
+   * Performs a request to PayPal to the specified endpoint.
+   *
+   * @param string $endpoint
+   *   The API endpoint (e.g /payments/payment).
+   * @param array $parameters
+   *   The array of parameters to send.
+   * @param string $method
+   *   The HTTP method, defaults to POST.
+   *
+   * @return array
+   *   PayPal response data.
+   *
+   * @see https://developer.paypal.com/docs/api
    */
-  public function doRequest($endpoint, array $parameters = [], $method = 'POST') {
+  protected function doRequest($endpoint, array $parameters = [], $method = 'POST') {
     try {
       $parameters += [
         'headers' => [
@@ -458,7 +483,7 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
         ];
       }
       $response = $this->httpClient->request($method, $this->getApiUrl() . $endpoint, $parameters);
-      return json_decode($response->getBody(), TRUE);
+      return Json::decode($response->getBody());
     }
     catch (RequestException $e) {
       \Drupal::logger('commerce_paypal')->error($e->getMessage());
@@ -467,9 +492,17 @@ class PaymentsPro extends OnsitePaymentGatewayBase implements PaymentsProInterfa
   }
 
   /**
-   * {@inheritdoc}
+   * Shows details for a payment, by ID, that is yet completed.
+   *
+   * For example, a payment that was created, approved, or failed.
+   *
+   * @param string $payment_id
+   *   The payment identifier.
+   *
+   * @return array
+   *   PayPal response data.
    */
-  public function getPaymentDetails($payment_id) {
+  protected function getPaymentDetails($payment_id) {
     return $this->doRequest($this->getApiUrl() . '/payments/payment/' . $payment_id, [], 'GET');
   }
 
